@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+# private device notes (fork maps, sync logs, open RE leads) — never pushed
+_personal/

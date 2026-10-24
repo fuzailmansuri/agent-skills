@@ -49,6 +49,7 @@ from this skill's folder as `python3 scripts/X.py` or `bash scripts/X.sh`; every
 | A maintainer pushed device/vendor/hardware changes: sync them | `references/upstream-sync.md` |
 | How to fetch from GitHub, GitLab, googlesource, Gerrit, cgit | `references/sources.md` |
 | Will this tree still build? | `references/build-safety.md` + `scripts/preflight.py` |
+| Split a bulk import commit, clean history, fix authorship | `references/history-surgery.md` + `scripts/hunk-coverage.py` |
 | Shell, git and Termux gotchas | `references/pitfalls.md` |
 
 Device facts (repo map, upstreams, sync checkpoints, open leads) live in the device skill for
@@ -61,6 +62,7 @@ notes). Load it alongside this one.
 |---|---|
 | `fetch-patch.py` | Commit, range, PR or Gerrit change from any host to an mbox for `git am`; `--map old/=new/` relocates files, `--include/--exclude` filter, `-C REPO --check` trial-applies, `--am` applies |
 | `followups.py` | Later reverts, fixes and touches of a commit upstream. Run before every pick |
+| `hunk-coverage.py` | Which upstream commits explain a bulk commit, line coverage and leftover |
 | `credit.py` | Author and trailers for a port (`--mirror` for our follow-ups) |
 | `upstream-diff.sh` | Upstream branch vs our fork: HAVE / CLEAN / CONFLICT per commit, plus the other repos each commit references |
 | `blob-drops.sh` | Net proprietary-list changes between revisions (reorders ignored), marks what our fork ships |

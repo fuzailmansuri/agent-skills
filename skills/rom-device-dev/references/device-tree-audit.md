@@ -64,3 +64,12 @@ When your tree lacks something, do not invent it — find the closest known-good
 - [ ] No duplicate VINTF HAL instances (QTI blobs + OSS service) — `preflight.py` catches.
 - [ ] `PRODUCT_PACKAGES` include every module referenced by the `.mk` graph.
 - [ ] sepolicy severity: run `avc2rules.py` and clear all `neverallow` risks.
+
+## 4. Only keep what is used
+
+Before importing or keeping an entry, prove something consumes it:
+- Overlay (RRO) resources: the name must exist in the target package
+  (`aapt2 dump resources` / grep the package's `res/values`). An absent name is dead.
+- Files and modules: referenced by a `PRODUCT_PACKAGES`/`COPY_FILES`/`.rc`/policy line.
+- Props: read by some binary or framework class (`blob-intel.py`, `git grep`).
+Drop the rest and say so in the commit; do not preserve dead lines "just in case".

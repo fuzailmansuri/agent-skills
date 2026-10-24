@@ -40,6 +40,10 @@ credit live in the `reverse-engineering-cherry-picking` skill.
 7. **History protection.** Never rewrite a pushed branch without an explicit fresh
    instruction; take backups first. Full safe-surgery method:
    `reverse-engineering-cherry-picking`, `references/history-surgery.md`.
+8. **Import only what is used.** Every imported line must be consumed by something in the
+   tree, and every imported commit keeps its original author
+   (`references/device-tree-audit.md` section 4). This is the same instinct as the
+   `ponytail` skill: the best change is the one you never had to write.
 
 ## Reference index
 
@@ -47,7 +51,7 @@ credit live in the `reverse-engineering-cherry-picking` skill.
 |---|---|
 | Device tree / HAL audit, sibling-device reasoning | `references/device-tree-audit.md` |
 | A feature broke after first boot — systematic debug | `references/first-boot-debugging.md` |
-| Git identity, commit style, credit summary | `references/git-conventions.md` |
+| Git identity, commit style, credit summary, org README | `references/git-conventions.md` |
 | Repo layout, manifests, fast patching | `references/repo-manifests.md` |
 | Kernel-level work: bring-up, modules, devicetrees | `references/kernel-level-work.md` |
 | Props spoofing & integrity hygiene | `references/props-integrity.md` |
@@ -126,6 +130,15 @@ When your tree lacks something, do not invent it — find the closest known-good
 - [ ] `PRODUCT_PACKAGES` include every module referenced by the `.mk` graph.
 - [ ] sepolicy severity: run `avc2rules.py` and clear all `neverallow` risks.
 
+## 4. Only keep what is used
+
+Before importing or keeping an entry, prove something consumes it:
+- Overlay (RRO) resources: the name must exist in the target package
+  (`aapt2 dump resources` / grep the package's `res/values`). An absent name is dead.
+- Files and modules: referenced by a `PRODUCT_PACKAGES`/`COPY_FILES`/`.rc`/policy line.
+- Props: read by some binary or framework class (`blob-intel.py`, `git grep`).
+Drop the rest and say so in the commit; do not preserve dead lines "just in case".
+
 
 ---
 
@@ -189,6 +202,32 @@ retrying constantly.
 duplicate services, duplicate SEP entries, undefined modules, list drift. Then a full
 manual review of the raw diff.
 
+## 6. Case study: "Hey Google" dead, `dumpsys soundtrigger_middleware` shows a fake HAL
+
+Symptom: hotword never triggers; `lshal`/logcat show the framework running a fake sound
+trigger HAL.
+- Cause: the HIDL passthrough `android.hardware.soundtrigger@2.x-impl` loads
+  `sound_trigger.primary.<platform>.so`. Nothing in the tree built or shipped it (the stock
+  dump has it), so the framework fell back.
+- Check: `ls /vendor/lib64/hw | grep sound_trigger` on stock vs ours; `lshal | grep sound`.
+- Fix: build it from source in the ROM tree rather than carry a prebuilt. Match the audio
+  stack: a HIDL/PAL audio HAL needs the HIDL st-hal (Lineage `st-hal-ar`, legacy branch), not
+  the AIDL one. Adapt `Android.bp`: `soong_namespace` importing the platform's
+  `hardware/qcom-caf/<platform>` namespace, module name `sound_trigger.primary.<platform>`,
+  add the namespace to `PRODUCT_SOONG_NAMESPACES`, keep the `-impl` package in
+  `PRODUCT_PACKAGES`, add the repo to the manifest. Verify without building: Soong
+  accepts the module (no missing-dep errors) and the library exports what the audio HAL
+  expects (`blob-intel.py`).
+
+## 7. Case study: setup wizard stalls or fails after a flash
+
+Check the security patch levels before blaming GMS. Boot, init_boot and vendor patch levels
+must match the firmware actually flashed. Read them from the stock images' AVB properties
+(`avbtool info_image --image boot.img`, `com.android.build.boot.security_patch`, etc.) and
+set `BOOT_SECURITY_PATCH`, `INIT_BOOT_SECURITY_PATCH`, `VENDOR_SECURITY_PATCH`
+accordingly. Treat it as a lead, not proof: also check key attestation (RKP) errors and
+Play Store/GMS waits in logcat from the wizard.
+
 
 ---
 
@@ -212,6 +251,12 @@ manual review of the raw diff.
   Good: "SystemUI: Implement scalable continuous slider with dynamic corner radius".
 - **No AI attribution trailers.** Human co-authors only.
 - AOSP style prefixes when appropriate (`device:`, `sepolicy:`, `overlay:`, subsystem `:`).
+- Shape: `device: Subject` (imperative, short), blank line, optional `* ` bullets for the
+  mechanism, `Signed-off-by` last. No essays, no "this commit", no marketing words.
+- One topic per commit. A bulk "import from X" commit is a defect: split it per upstream
+  commit/author and per subsystem (`reverse-engineering-cherry-picking`,
+  `references/history-surgery.md` section 5). Never keep Gerrit `Change-Id:` lines.
+- Other ROMs by name are fine only as a credited source URL, not as the reason for a change.
 
 ## 3. Remote operations & PR safety
 - Never open PRs, issues, discussions or comments against third-party or upstream repos
@@ -226,6 +271,10 @@ manual review of the raw diff.
   `git rev-parse HEAD^{tree}`, work on a branch, never on the shared remote directly.
 - Force-push language: `git push --force-with-lease` for single-user, or plain `--force`
   when the user explicitly approves a history replacement.
+
+## 5. Org presentation
+- AI-assisted work is disclosed in the **org profile README** (`<org>/.github/profile/README.md`),
+  not in the device tree: one short note, no model names. Commits never carry AI trailers.
 
 
 ---

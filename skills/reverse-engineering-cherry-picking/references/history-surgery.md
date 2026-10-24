@@ -47,3 +47,41 @@ names).
 ## 4. Push
 One flat force per approved rewrite (`git push --force` or `--force-with-lease`). Never
 interleave pushes between passes.
+
+## 5. Splitting a bulk "import" commit into proper history
+
+A single commit that dumps dozens of files ("Import adaptations from X", many co-author
+lines) hides authorship and shows nothing a reviewer can read. Split it:
+
+1. **Find the sources.** Save the candidate upstream commits as patches (`fetch-patch.py`,
+   one file per commit) into a scratch dir.
+2. **Measure.** `python3 scripts/hunk-coverage.py COMMIT PATCH_DIR -C REPO` lists which
+   upstream commits explain how many of the commit's added lines, and what is left over.
+3. **Replay upstream-explained parts** as separate commits: upstream author and date kept
+   (`git commit --author=... --date=...`), upstream subject, body with the source URL or a
+   `(cherry picked from commit SHA)` line, then `Signed-off-by: <you>`. Assign each upstream
+   commit **once**; a second stage that replays an already-assigned commit duplicates it
+   (check `git log --format=%s | sort | uniq -d` before pushing).
+4. **Group the leftover** into your own topical commits (one subsystem per commit: avb,
+   sepolicy, overlays, props...), short subject and `* ` bullets, you as author.
+5. **Drop what is unused** instead of preserving it: an overlay/RRO entry whose resource name
+   does not exist in the package it overlays, a file nothing references. Check each against
+   the target tree before keeping it.
+6. **Strip Gerrit `Change-Id:` lines** from replayed messages.
+7. **Verify.** Final tree equals the recorded tree except the entries dropped on purpose
+   (`git diff OLD NEW --stat` should list only those). Run `preflight.py`.
+
+Do the work in a throwaway `git worktree` on a new branch so a running build in the main
+checkout is untouched; the user later runs `git reset --hard <remote>/<branch>` themselves.
+
+## 6. More traps
+- **Shallow clones:** commits at the shallow boundary cannot be rewritten (the branch would be
+  orphaned). `git fetch --deepen N` only in the repo being rewritten, never a big one.
+- **Ambiguous cleanup wording.** "Delete the commits" can mean drop the feature or only tidy
+  the history. Ask which; if a feature was dropped by mistake, restore it and remove the
+  drop/revert pair instead.
+- **Global identity leaking.** A machine-wide `user.name` that belongs to someone else turns
+  into wrong authorship across a whole session. Set `user.name`/`user.email` per repo before
+  the first commit, and census authors after the work (`git log --format='%an <%ae>'`).
+- Re-authoring is for work that is solely the user's. Verbatim ports of someone else's code
+  keep that author (see `credit.md`).

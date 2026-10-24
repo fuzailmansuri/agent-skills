@@ -50,6 +50,7 @@ from this skill's folder as `python3 scripts/X.py` or `bash scripts/X.sh`; every
 | A maintainer pushed device/vendor/hardware changes: sync them | `references/upstream-sync.md` |
 | How to fetch from GitHub, GitLab, googlesource, Gerrit, cgit | `references/sources.md` |
 | Will this tree still build? | `references/build-safety.md` + `scripts/preflight.py` |
+| Split a bulk import commit, clean history, fix authorship | `references/history-surgery.md` + `scripts/hunk-coverage.py` |
 | Shell, git and Termux gotchas | `references/pitfalls.md` |
 
 Device facts (repo map, upstreams, sync checkpoints, open leads) live in the device skill for
@@ -62,6 +63,7 @@ notes). Load it alongside this one.
 |---|---|
 | `fetch-patch.py` | Commit, range, PR or Gerrit change from any host to an mbox for `git am`; `--map old/=new/` relocates files, `--include/--exclude` filter, `-C REPO --check` trial-applies, `--am` applies |
 | `followups.py` | Later reverts, fixes and touches of a commit upstream. Run before every pick |
+| `hunk-coverage.py` | Which upstream commits explain a bulk commit, line coverage and leftover |
 | `credit.py` | Author and trailers for a port (`--mirror` for our follow-ups) |
 | `upstream-diff.sh` | Upstream branch vs our fork: HAVE / CLEAN / CONFLICT per commit, plus the other repos each commit references |
 | `blob-drops.sh` | Net proprietary-list changes between revisions (reorders ignored), marks what our fork ships |
@@ -333,6 +335,44 @@ names).
 ## 4. Push
 One flat force per approved rewrite (`git push --force` or `--force-with-lease`). Never
 interleave pushes between passes.
+
+## 5. Splitting a bulk "import" commit into proper history
+
+A single commit that dumps dozens of files ("Import adaptations from X", many co-author
+lines) hides authorship and shows nothing a reviewer can read. Split it:
+
+1. **Find the sources.** Save the candidate upstream commits as patches (`fetch-patch.py`,
+   one file per commit) into a scratch dir.
+2. **Measure.** `python3 scripts/hunk-coverage.py COMMIT PATCH_DIR -C REPO` lists which
+   upstream commits explain how many of the commit's added lines, and what is left over.
+3. **Replay upstream-explained parts** as separate commits: upstream author and date kept
+   (`git commit --author=... --date=...`), upstream subject, body with the source URL or a
+   `(cherry picked from commit SHA)` line, then `Signed-off-by: <you>`. Assign each upstream
+   commit **once**; a second stage that replays an already-assigned commit duplicates it
+   (check `git log --format=%s | sort | uniq -d` before pushing).
+4. **Group the leftover** into your own topical commits (one subsystem per commit: avb,
+   sepolicy, overlays, props...), short subject and `* ` bullets, you as author.
+5. **Drop what is unused** instead of preserving it: an overlay/RRO entry whose resource name
+   does not exist in the package it overlays, a file nothing references. Check each against
+   the target tree before keeping it.
+6. **Strip Gerrit `Change-Id:` lines** from replayed messages.
+7. **Verify.** Final tree equals the recorded tree except the entries dropped on purpose
+   (`git diff OLD NEW --stat` should list only those). Run `preflight.py`.
+
+Do the work in a throwaway `git worktree` on a new branch so a running build in the main
+checkout is untouched; the user later runs `git reset --hard <remote>/<branch>` themselves.
+
+## 6. More traps
+- **Shallow clones:** commits at the shallow boundary cannot be rewritten (the branch would be
+  orphaned). `git fetch --deepen N` only in the repo being rewritten, never a big one.
+- **Ambiguous cleanup wording.** "Delete the commits" can mean drop the feature or only tidy
+  the history. Ask which; if a feature was dropped by mistake, restore it and remove the
+  drop/revert pair instead.
+- **Global identity leaking.** A machine-wide `user.name` that belongs to someone else turns
+  into wrong authorship across a whole session. Set `user.name`/`user.email` per repo before
+  the first commit, and census authors after the work (`git log --format='%an <%ae>'`).
+- Re-authoring is for work that is solely the user's. Verbatim ports of someone else's code
+  keep that author (see `credit.md`).
 
 
 ---
@@ -670,6 +710,7 @@ Not runnable from a chat; on a machine with the repo, run them as described abov
 - `credit.py`: Print the authorship and credit trailers for a commit built from upstream work.
 - `fetch-patch.py`: Fetch commits from any git host as an mbox for `git am`, without cloning.
 - `followups.py`: Find upstream commits that came after a commit and revert, fix or touch it.
+- `hunk-coverage.py`: Which upstream commits explain a bulk commit? Added-line coverage per patch.
 - `preflight.py`: Static build-safety checks for an Android device tree, for when nobody builds.
 - `upstream-diff.sh`: Classify an upstream branch's commits against a fork branch, without touching
 - `vendor-api-commit.py`: Commit to a proprietary vendor repo through the GitHub API, without cloning it.

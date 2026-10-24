@@ -16,6 +16,12 @@
   Good: "SystemUI: Implement scalable continuous slider with dynamic corner radius".
 - **No AI attribution trailers.** Human co-authors only.
 - AOSP style prefixes when appropriate (`device:`, `sepolicy:`, `overlay:`, subsystem `:`).
+- Shape: `device: Subject` (imperative, short), blank line, optional `* ` bullets for the
+  mechanism, `Signed-off-by` last. No essays, no "this commit", no marketing words.
+- One topic per commit. A bulk "import from X" commit is a defect: split it per upstream
+  commit/author and per subsystem (`reverse-engineering-cherry-picking`,
+  `references/history-surgery.md` section 5). Never keep Gerrit `Change-Id:` lines.
+- Other ROMs by name are fine only as a credited source URL, not as the reason for a change.
 
 ## 3. Remote operations & PR safety
 - Never open PRs, issues, discussions or comments against third-party or upstream repos
@@ -30,3 +36,7 @@
   `git rev-parse HEAD^{tree}`, work on a branch, never on the shared remote directly.
 - Force-push language: `git push --force-with-lease` for single-user, or plain `--force`
   when the user explicitly approves a history replacement.
+
+## 5. Org presentation
+- AI-assisted work is disclosed in the **org profile README** (`<org>/.github/profile/README.md`),
+  not in the device tree: one short note, no model names. Commits never carry AI trailers.

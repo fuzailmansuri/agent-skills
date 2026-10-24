@@ -14,6 +14,7 @@ the skill's folder (`python3 scripts/X.py -h`).
 | `reverse-engineering-cherry-picking` | Reverse engineering Android blobs/HALs/apps/firmware/live device, SELinux denials, picking or porting commits from any ROM/kernel/maintainer, syncing upstream pushes, build-safety without builds, safe git history surgery, parallel-tree sync |
 | `rom-device-dev` | Device-tree bring-up or maintenance on any Android ROM: runbook rules, subsystem fixes (display, vibration, audio, camera, fingerprint), first-boot debugging, manifests and fast patching, kernel-level work (bring-up, modules, devicetrees), props spoofing & integrity hygiene |
 | `reverse-engineer-anything` | General artifact reverse engineering via the REA toolchain (MCP server, decompilers) — **forked; all credit to [REA](https://github.com/morluto/rea)**, see its `CREDITS.md` |
+| `ponytail` | Coding discipline: the smallest complete change, no unrequested code — **vendored; all credit to [Ponytail](https://github.com/DietrichGebert/ponytail)**, see its `CREDITS.md` |
 
 **Editing this repo:**
 - Keep each `SKILL.md` short; detail goes in `references/`.

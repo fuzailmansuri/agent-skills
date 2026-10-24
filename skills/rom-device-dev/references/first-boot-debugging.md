@@ -55,3 +55,29 @@ retrying constantly.
 `scripts/preflight.py` from the cherry-picking skill:
 duplicate services, duplicate SEP entries, undefined modules, list drift. Then a full
 manual review of the raw diff.
+
+## 6. Case study: "Hey Google" dead, `dumpsys soundtrigger_middleware` shows a fake HAL
+
+Symptom: hotword never triggers; `lshal`/logcat show the framework running a fake sound
+trigger HAL.
+- Cause: the HIDL passthrough `android.hardware.soundtrigger@2.x-impl` loads
+  `sound_trigger.primary.<platform>.so`. Nothing in the tree built or shipped it (the stock
+  dump has it), so the framework fell back.
+- Check: `ls /vendor/lib64/hw | grep sound_trigger` on stock vs ours; `lshal | grep sound`.
+- Fix: build it from source in the ROM tree rather than carry a prebuilt. Match the audio
+  stack: a HIDL/PAL audio HAL needs the HIDL st-hal (Lineage `st-hal-ar`, legacy branch), not
+  the AIDL one. Adapt `Android.bp`: `soong_namespace` importing the platform's
+  `hardware/qcom-caf/<platform>` namespace, module name `sound_trigger.primary.<platform>`,
+  add the namespace to `PRODUCT_SOONG_NAMESPACES`, keep the `-impl` package in
+  `PRODUCT_PACKAGES`, add the repo to the manifest. Verify without building: Soong
+  accepts the module (no missing-dep errors) and the library exports what the audio HAL
+  expects (`blob-intel.py`).
+
+## 7. Case study: setup wizard stalls or fails after a flash
+
+Check the security patch levels before blaming GMS. Boot, init_boot and vendor patch levels
+must match the firmware actually flashed. Read them from the stock images' AVB properties
+(`avbtool info_image --image boot.img`, `com.android.build.boot.security_patch`, etc.) and
+set `BOOT_SECURITY_PATCH`, `INIT_BOOT_SECURITY_PATCH`, `VENDOR_SECURITY_PATCH`
+accordingly. Treat it as a lead, not proof: also check key attestation (RKP) errors and
+Play Store/GMS waits in logcat from the wizard.

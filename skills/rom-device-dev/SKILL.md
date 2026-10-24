@@ -39,6 +39,10 @@ credit live in the `reverse-engineering-cherry-picking` skill.
 7. **History protection.** Never rewrite a pushed branch without an explicit fresh
    instruction; take backups first. Full safe-surgery method:
    `reverse-engineering-cherry-picking`, `references/history-surgery.md`.
+8. **Import only what is used.** Every imported line must be consumed by something in the
+   tree, and every imported commit keeps its original author
+   (`references/device-tree-audit.md` section 4). This is the same instinct as the
+   `ponytail` skill: the best change is the one you never had to write.
 
 ## Reference index
 
@@ -46,7 +50,7 @@ credit live in the `reverse-engineering-cherry-picking` skill.
 |---|---|
 | Device tree / HAL audit, sibling-device reasoning | `references/device-tree-audit.md` |
 | A feature broke after first boot — systematic debug | `references/first-boot-debugging.md` |
-| Git identity, commit style, credit summary | `references/git-conventions.md` |
+| Git identity, commit style, credit summary, org README | `references/git-conventions.md` |
 | Repo layout, manifests, fast patching | `references/repo-manifests.md` |
 | Kernel-level work: bring-up, modules, devicetrees | `references/kernel-level-work.md` |
 | Props spoofing & integrity hygiene | `references/props-integrity.md` |

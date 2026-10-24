@@ -15,16 +15,21 @@ instead of guessing.
 
 The provider requires a separately supplied headless JADX MCP JAR 0.7.1 and
 Java 17 or newer. `REA_JADX_MCP_JAR` selects the absolute JAR path; `JAVA_HOME`
-can select Java. REA setup does not install or configure that JAR, and doctor
-provider scopes cover Hopper/Ghidra rather than JADX. Use existing tools and
-report missing prerequisites for the Android task specifically.
+can select Java. Use `rea doctor --provider jadx --json` to check the JADX
+configuration and obtain remediation for missing prerequisites. Java and the
+headless JADX MCP JAR remain caller-supplied; REA setup does not install or
+configure them. Configuration readiness does not establish successful analysis
+of a particular APK.
 
 Linux and macOS use the POSIX owned-process boundary. Windows x64 requires the
 matching bundled native controls and uses an owned Job Object with bidirectional
 stdio. A full JDK, including `jdk.compiler`, is required on every host; Windows
 `JAVA_HOME` selects `bin\java.exe`. Consult the Android guide for actual host
 verification coverage. Calls use one worker and provider deadlines; optional
-`REA_JADX_HEAP_MIB` selects the JVM heap. The APK is never launched,
+`REA_JADX_HEAP_MIB` selects the JVM heap and `REA_JADX_OPERATION_TIMEOUT_MS`
+the per-operation deadline (integer milliseconds from 1 to 2147483647, default
+120000; a change applies on the next process start; the MCP client's tool
+timeout must also allow it). The APK is never launched,
 and no emulator is required.
 
 Manifest entries and decompiled text are static observations, not execution or

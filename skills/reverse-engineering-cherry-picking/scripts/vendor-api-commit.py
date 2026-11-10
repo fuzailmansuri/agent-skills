@@ -22,6 +22,7 @@ import argparse
 import base64
 import datetime
 import difflib
+import hashlib
 import json
 import re
 import subprocess
@@ -34,7 +35,6 @@ def me():
         sys.exit("git config user.name/user.email unset — set your own identity first")
     return f"{name} <{email}>"
 
-ME = me()
 BLOCK = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*) \{$")
 
 
@@ -103,7 +103,7 @@ def main():
     ap.add_argument("--put", action="append", default=[], metavar="LOCAL=REPO_PATH")
     ap.add_argument("-m", "--message")
     ap.add_argument("-F", "--message-file")
-    ap.add_argument("--author", default=ME)
+    ap.add_argument("--author")
     ap.add_argument("--co-author", action="append", default=[], metavar="'Name <email>'")
     ap.add_argument("--no-signoff", action="store_true")
     ap.add_argument("--diff", action="store_true", help="print unified diffs of edited makefiles")
@@ -111,6 +111,7 @@ def main():
     a = ap.parse_args()
     if not (a.drop_module or a.drop_file or a.put):
         sys.exit("nothing to do")
+    identity = me() if a.apply else None
 
     R = f"repos/{a.repo}"
     head = gh(f"{R}/git/ref/heads/{a.branch}")["object"]["sha"]
@@ -122,6 +123,7 @@ def main():
     if tree.get("truncated"):
         sys.exit("tree listing truncated; this repo is too big for the recursive tree endpoint")
     files = {e["path"] for e in tree["tree"] if e["type"] == "blob"}
+    original = {e["path"]: e for e in tree["tree"] if e["type"] == "blob"}
     mk_names = sorted(p for p in files if "/" not in p and p.endswith("-vendor.mk"))
     if "Android.bp" not in files or len(mk_names) != 1:
         sys.exit(f"expected Android.bp and one *-vendor.mk at the root, found {mk_names}")
@@ -152,6 +154,9 @@ def main():
             if line.strip() in (name, name + " \\"):
                 mk_doomed.add(i)
     for path in a.drop_file:
+        if path in ("Android.bp", "Android.mk", mk_name):
+            errors.append(f"cannot delete generated build file {path}; review this change in a local checkout")
+            continue
         if path not in files:
             errors.append(f"{path} not in the tree")
             continue
@@ -165,6 +170,10 @@ def main():
         local, _, dest = spec.partition("=")
         if not dest:
             sys.exit(f"--put wants LOCAL=REPO_PATH, got {spec}")
+        if dest.startswith("/") or any(p in ("", ".", "..") for p in dest.split("/")):
+            sys.exit(f"--put needs a repository-relative file path: {dest}")
+        if dest in ("Android.bp", "Android.mk", mk_name):
+            sys.exit(f"--put cannot replace {dest}; review generated build-file edits in a local checkout")
         with open(local, "rb") as fh:
             puts[dest] = fh.read()
         deletes.discard(dest)
@@ -208,6 +217,9 @@ def main():
     if mk_new != mk_old:
         changes[mk_name] = mk_new.encode()
     changes.update(puts)
+    changes = {path: data for path, data in changes.items()
+               if hashlib.sha1(f"blob {len(data)}\0".encode() + data).hexdigest()
+               != original.get(path, {}).get("sha")}
 
     print(f"repo     {a.repo} {a.branch} @ {base[:12]}{'' if base == head else ' (not the branch head)'}")
     print(f"modules  -{len(a.drop_module)}: {', '.join(a.drop_module) or '-'}")
@@ -229,6 +241,9 @@ def main():
             print(f"  {e}")
         sys.exit(1)
     print("checks   module set, brace balance, dangling references: ok")
+    if not changes and not deletes:
+        print("no changes; branch left unchanged")
+        return
     if not a.apply:
         print("\ndry run; add --apply to commit")
         return
@@ -242,22 +257,25 @@ def main():
         sys.exit("--apply needs -m or -F")
     msg = msg.rstrip("\n") + "\n"
     trailers = [f"Co-authored-by: {c}" for c in a.co_author if f"Co-authored-by: {c}" not in msg]
-    if not a.no_signoff and f"Signed-off-by: {ME}" not in msg:
-        trailers.append(f"Signed-off-by: {ME}")
+    if not a.no_signoff and f"Signed-off-by: {identity}" not in msg:
+        trailers.append(f"Signed-off-by: {identity}")
     if trailers:
         last = msg.rstrip("\n").split("\n")[-1]
         sep = "\n" if re.match(r"^[A-Za-z-]+: ", last) else "\n\n"
         msg = msg.rstrip("\n") + sep + "\n".join(trailers) + "\n"
 
+    an, ae = person(a.author or identity)
+    cn, ce = person(identity)
+    if gh(f"{R}/git/ref/heads/{a.branch}")["object"]["sha"] != head:
+        sys.exit("branch moved during review; run a fresh dry run before applying")
     entries = []
     for path, data in changes.items():
         blob = gh(f"{R}/git/blobs", "POST", {"content": base64.b64encode(data).decode(), "encoding": "base64"})
-        entries.append({"path": path, "mode": "100644", "type": "blob", "sha": blob["sha"]})
+        entries.append({"path": path, "mode": original.get(path, {}).get("mode", "100644"),
+                        "type": "blob", "sha": blob["sha"]})
     entries += [{"path": p, "mode": "100644", "type": "blob", "sha": None} for p in sorted(deletes)]
     new_tree = gh(f"{R}/git/trees", "POST", {"base_tree": base_tree, "tree": entries})["sha"]
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    an, ae = person(a.author)
-    cn, ce = person(ME)
     commit = gh(f"{R}/git/commits", "POST", {
         "message": msg, "tree": new_tree, "parents": [base],
         "author": {"name": an, "email": ae, "date": now},

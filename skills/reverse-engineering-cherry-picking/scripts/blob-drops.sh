@@ -13,7 +13,7 @@ unset -f grep sort sed comm 2>/dev/null || true
 
 C= L=proprietary-files.txt
 while getopts "C:l:h" o; do
-    case "$o" in C) C=$OPTARG ;; l) L=$OPTARG ;; *) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;; esac
+    case "$o" in C) C=$OPTARG ;; l) L=$OPTARG ;; h) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;; *) exit 1 ;; esac
 done
 shift $((OPTIND - 1))
 [ -n "$C" ] && [ $# -ge 2 ] || { sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
@@ -26,7 +26,7 @@ trap 'rm -rf "$TMP"' EXIT
 norm() {
     git -C "$C" show "$1:$L" \
         | sed -e 's/#.*$//' -e 's/^[[:space:]]*-//' -e 's/[;|].*$//' -e 's/[[:space:]]*$//' \
-        | grep -v '^$' | LC_ALL=C sort -u
+        | sed '/^$/d' | LC_ALL=C sort -u
 }
 norm "$OLD" > "$TMP/old"
 norm "$NEW" > "$TMP/new"

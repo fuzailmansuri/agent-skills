@@ -20,6 +20,14 @@ the skill's folder (`python3 scripts/X.py -h`).
 - Keep each `SKILL.md` short; detail goes in `references/`.
 - Scripts are Python 3 stdlib or bash only, and every one has `-h`.
 - Committing identity = your own git config; technical messages, no AI trailers.
-- Run `bash bundle.sh` after edits so `dist/` stays current.
+- Run `python3 -m unittest discover -s tests -v`, `bash bundle.sh`, and
+  `git diff --check` after changes. Keep generated `dist/` files current.
+- Original Android skills must distinguish evidence, inference and unknowns, admit
+  capability limits, correct mistakes, and prefer verified AOSP mechanisms over
+  speculative workarounds. Static checks are never proof of build/runtime success.
+- Vendored REA/Ponytail source stays byte-identical to the credited upstream commit;
+  update provenance and preserve licenses when refreshing. Bundles include both.
+- Do not introduce private paths, device-specific tuning defaults or unconditional
+  publishing/build/history rules into reusable guidance.
 - Private device data (fork maps, sync logs) lives in `_personal/` — gitignored, never
   committed; the public templates live in the device skill's `references/`.

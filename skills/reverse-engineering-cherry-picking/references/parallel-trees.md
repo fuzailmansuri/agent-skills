@@ -26,6 +26,5 @@ offered nothing equivalent. The rest was base.
 ## 3. Ship as cherry-picks with original authorship
 `git cherry-pick` per commit (original author preserved), base first; conflicts resolve
 against the target's semantics (if the target has both `enabled` and a comment about why,
-that design wins over the移植 commit's "disable" — confirm with the user, don't silently
-overwrite). Verify commit-by-commit with a per-commit diff review at the end — preflight.py,
-then run the target tree like normal code.
+that design wins over the incoming commit's "disable" — establish the requested target behavior before changing it). Verify commit-by-commit with a per-commit diff review at the end — preflight.py,
+then run the relevant target checks when available and report remaining gaps.

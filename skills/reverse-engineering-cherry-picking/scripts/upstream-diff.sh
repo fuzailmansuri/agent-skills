@@ -16,7 +16,7 @@
 #   -k  keep the CLEAN picks on a new local branch with this name
 #
 # Status per upstream commit (oldest first):
-#   HAVE      same patch-id or same subject already on the fork, or picks to a no-op
+#   HAVE      picks to a no-op on the current trial tree
 #   CLEAN     cherry-picks cleanly (picks are cumulative, in upstream order)
 #   CONFLICT  does not apply; conflicting files listed
 #
@@ -38,8 +38,8 @@ done
 [ -n "$C" ] && [ -n "$U" ] && [ -n "$B" ] && [ -n "$F" ] || usage
 
 g() { git -C "$C" "$@"; }
-NAME=${SYNC_NAME:-$(git config user.name)}
-EMAIL=${SYNC_EMAIL:-$(git config user.email)}
+NAME=${SYNC_NAME:-$(g config user.name)}
+EMAIL=${SYNC_EMAIL:-$(g config user.email)}
 
 g fetch -q --no-tags "$U" "+refs/heads/$B:refs/remotes/usync/$B"
 UP=refs/remotes/usync/$B
@@ -80,13 +80,6 @@ trap cleanup EXIT
 g worktree add -q --detach "$WT" "$F"
 w() { git -C "$WT" -c user.name="$NAME" -c user.email="$EMAIL" "$@"; }
 
-declare -A SAME=()
-while read -r mark sha; do
-    [ "$mark" = "-" ] && SAME[$sha]=1
-done < <(g cherry "$F" "$UP" "$MB")
-
-g log --format=%s "$MB..$F" > "$TMP/subjects"
-
 CLEAN=() n_have=0 n_clean=0 n_conf=0
 printf '\n%-8s  %-8s  %-10s  %-11s  %s\n' STATUS COMMIT DATE SIZE SUBJECT
 for c in "${COMMITS[@]}"; do
@@ -101,11 +94,7 @@ for c in "${COMMITS[@]}"; do
         | grep -vE '^vendor/(bin|xbin|lib|lib64|etc|firmware|app|priv-app|framework|overlay|usr|gpu|dsp|rfs|radio|media|camera|odm)(/|$)' \
         | { if [ -n "$P" ]; then grep -v "^${P%/}"; else cat; fi; } \
         | sort -u | tr '\n' ' '; } || true)
-    if [ -n "${SAME[$c]:-}" ]; then
-        st=HAVE note="same patch"; n_have=$((n_have + 1))
-    elif grep -qxF -- "$subj" "$TMP/subjects"; then
-        st=HAVE note="same subject"; n_have=$((n_have + 1))
-    elif w cherry-pick --allow-empty --keep-redundant-commits "$c" >/dev/null 2>&1; then
+    if w cherry-pick --allow-empty --keep-redundant-commits "$c" >/dev/null 2>&1; then
         if git -C "$WT" diff --quiet HEAD~1 HEAD; then
             git -C "$WT" reset -q --hard HEAD~1
             st=HAVE note="no-op on fork"; n_have=$((n_have + 1))

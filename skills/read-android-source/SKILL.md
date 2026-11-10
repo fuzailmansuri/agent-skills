@@ -1,58 +1,60 @@
 ---
 name: read-android-source
 description: >-
-  Read and navigate upstream Android source online without cloning: Google AOSP
-  (android.googlesource.com / cs.android.com), Qualcomm CodeLinaro (git.codelinaro.org,
-  LA.* tags), and LineageOS (review.lineageos.org, GitHub mirrors). Use when the user asks
-  where something is implemented, what stock code does, which version/tag introduced or
-  changed a behaviour, or wants to cross-check a device tree against Android/CAF source.
-  For fetching single commits use the reverse-engineering-cherry-picking skill's
-  fetch recipes; that is not this skill's focus.
+  Locate and explain upstream Android implementations in AOSP, Qualcomm CodeLinaro,
+  LineageOS and ROM mirrors. Use for source-backed behavior questions, callers and
+  configuration, version or tag comparisons, and device-tree cross-checks without
+  cloning large repositories.
 ---
 
-# Reading upstream Android source (AOSP, CLO, LineageOS)
+# Read upstream Android source
 
-Answer "where is this / what does stock do / which tag has it" against the *real* trees.
+Answer against a specific repository and revision. Read
+[android-tree-map.md](references/android-tree-map.md) when locating an unfamiliar
+subsystem; treat its paths and tag families as starting points to verify.
 
-## The tree map
+## Engineering standard
 
-Do not guess where code lives — check `references/android-tree-map.md` first: repo → concern
-(frameworks/base, system/, hardware/interfaces, packages/services, vendor, build). The map
-also lists CLO's LA. tag families and Lineage's repo/branch conventions.
+Do not answer from remembered AOSP behavior when the target branch can be read.
+Verify every API, symbol, property and path before relying on it. A source
+implementation is not proof that the device builds, selects or executes it.
 
-## Reading tools (no clone)
+Distinguish observations, inferences and unknowns. Admit missing source, access,
+tools or knowledge directly; a failed fetch does not mean the implementation is
+absent. Never fabricate citations or pretend to have inspected unavailable code.
+Correct a mistaken assumption explicitly and revisit conclusions built on it.
+Prefer explaining the actual platform contract to proposing a clever workaround.
 
-| Host | Browse/search | Raw file | Notes |
-|---|---|---|---|
-| **cs.android.com** (AOSP code search incl. history) | query bar: `file:` / symbol search | opens the source directly | covers all AOSP branches + chromium cross-refs |
-| **android.googlesource.com** | `+/refs/heads/BR?format=JSON` (branch/listing walks), `+log` per-path can 401 anonymously | `+/REF/PATH?format=TEXT` (base64) | authoritative AOSP; gitiles links `+-/blob` |
-| **git.codelinaro.org** (Qualcomm CLO) | GitLab web + `api/v4/projects/GROUP%2FPROJECT/...` | `/-/raw/REF/PATH` | tags `LA.QSSI-*`, `LA.VENDOR-*`, `KERNEL.PLATFORM-*`; match the exact CLO family a build shipped with |
-| **review.lineageos.org** (Lineage Gerrit) | `/changes/?q=project:P+file:PATH` | `/changes/N/revisions/current/patch` | merged + open history incl. device/HAL trees |
-| **GitHub mirrors** (LineageOS org, aosp-mirror, device maintainers) | `gh api` / `gh search code` (default branch only) | `contents/PATH?ref=BR` | aosp-mirror is periodic, not authoritative |
+## Sources
 
-Patch/commit fetch recipes (mbox generation, compare, tree diffs) live in the
-`reverse-engineering-cherry-picking` skill → `references/sources.md`.
+| Host | Read and search | Limits |
+|---|---|---|
+| cs.android.com | Symbol/file search, references and history | Check the selected project and branch; an index is a locator, not complete evidence for every release. |
+| android.googlesource.com | `PROJECT/+/REF/PATH?format=TEXT` for base64 file contents; `?format=JSON` for metadata/listings; `+log/REF/PATH?format=JSON` for history | Strip the Gitiles anti-XSSI prefix before parsing JSON. Access failures require another source or an explicit gap. |
+| git.codelinaro.org | GitLab project API and `/-/raw/REF/PATH` where available | Verify current project location, access and exact platform/tag family; host or mirror migrations can invalidate old URLs. |
+| review.lineageos.org | Gerrit changes by project/path, revision metadata and patches | An open review is not a merged implementation; pin the patchset or merged commit. |
+| GitHub mirrors | `gh api` commit/tree/content endpoints and code search | Code search indexes the default branch. Resolve and inspect the requested branch separately. Mirrors may lag upstream. |
+
+Prefer an existing local checkout when it matches the question. Use bounded file,
+commit and path-history requests before considering a large fetch. Paginate history
+when claiming coverage; report limited searches as limited.
 
 ## Method
 
-1. **Pin the target question**: which repo+file, which Android/CAF/Lineage version, whose
-   device tree is the reference (read `references/android-tree-map.md` when unsure).
-2. **Search breadth-first**: symbol or string through cs.android.com (AOSP), CLO GitLab
-   (`search:` scope), Lineage Gerrit (`project:` + `file:`), GitHub mirrors (default-branch
-   caveat). `grep` locally only after narrowing.
-3. **Open the file raw** (base64 googlesource / GitLab raw / GitHub raw) and read the
-   version at the closest tag/branch to the user's tree — reading HEAD when you care about
-   an older base is the classic wrong-answer trap.
-4. **Trace sideways**: who calls into it (cross-refs on cs.android.com), which overlay or
-   build config flips the behaviour, and which device tree override would take precedence.
-5. **Record what still needs testing** on a device: which prop, node, service, or HAL
-   instance. The rom-device-dev skill keeps the device-log side.
+1. Establish the Android base, device/vendor context, repository and branch/tag.
+   Resolve moving refs to commit SHAs for comparison and citations.
+2. Locate the implementation using the appropriate source index or a scoped `rg`.
+   Open the actual code at the selected revision, including relevant declarations.
+3. Trace callers, build selection, feature flags, overlays, init/property writers
+   and vendor overrides that can change the effective behavior.
+4. For version questions, compare pinned revisions and inspect relevant commits;
+   distinguish first appearance in the searched history from a proven introduction.
+5. Report the mechanism with repository, SHA and path/line links. Explain what
+   source proves and what still needs a build or device observation.
 
-## Pitfalls
+CLO tags are repository/platform specific; equal-looking tag numbers in QSSI,
+VENDOR and kernel projects do not establish a matched release. A sibling-device
+implementation is a lead until hardware, firmware and interface contracts match.
 
-- Googlesource gitiles `?format=JSON` needs the `)]}'` prefix stripped before `json.loads`.
-- CLO tags are per-platform families; the SAME tag number varies across `LA.QSSI`,
-  `LA.VENDOR` and kernel-led repos — always name repo+tag together.
-- Lineage Gerrit "changes" search: open statuses differ from merged; treat open as
-  unreviewed.
-- GitHub code search only indexes the default branch — for history/branches use the API.
+For fetching and adapting patches, use `reverse-engineering-cherry-picking` when
+available; ordinary source reading does not require its scripts or a REA server.

@@ -15,8 +15,9 @@ The committer is always the user's identity. `python3 scripts/credit.py O/R SHA.
 the author, the footer and the command. `vendor-api-commit.py` takes `--author` and
 `--co-author` for vendor commits.
 
-Keep the upstream subject on ports. `upstream-diff.sh` matches by subject, so the next sync
-shows them as HAVE instead of re-proposing them.
+Keep the upstream subject when it still describes the change, and preserve source
+SHAs/URLs. Subject matches aid discovery but do not prove equivalence; compare the
+actual content, including later reverts and adaptations.
 
 ## Example (anonymized; lights HAL port)
 
@@ -44,9 +45,10 @@ Co-authored-by: Upstream Maintainer <them@example.dev>
 Signed-off-by: You <you@example.org>
 ```
 
-Forgot credit on something already pushed? Amend the tip and push
-`--force-with-lease=BR:OLDSHA`, keeping the tree identical. For a vendor repo, create a new
-commit object with the same tree and parent through the API.
+For missing credit on a published commit, first establish whether a history rewrite
+is authorized. Prepare and verify the correction locally; an authorized rewrite
+uses `--force-with-lease=refs/heads/BR:REVIEWED_SHA` and preserves the final tree.
+Do not infer rewrite permission from a request to inspect authorship.
 
 ## History surgery for credit (when a rewrite is justified)
 
@@ -54,4 +56,4 @@ Full playbook: `references/history-surgery.md`. Summary: backups and a recorded 
 first; identity normalization and trailer additions are message-only (final tree must stay
 byte-identical); consolidation of loose commits is done by squash, only on adjacent commits;
 net-zero pairs are deleted after patch-level verification; force-pushing is an explicit
-fresh instruction.
+authorization; do not repeatedly request permission already given.

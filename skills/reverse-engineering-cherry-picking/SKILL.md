@@ -1,98 +1,99 @@
 ---
 name: reverse-engineering-cherry-picking
 description: >-
-  Reverse engineering and cherry-picking for Android ROM and device bring-up work. Use when the user
-  wants to find out how a stock blob, HAL, APK, kernel module, firmware or the live device does
-  something; to turn SELinux denials into policy; or to pick, port, sync or adapt commits from another
-  ROM, kernel, AOSP/CLO or device maintainer (GitHub, GitLab/CodeLinaro, googlesource, Gerrit,
-  kernel.org) into their own trees, build-safe without a build, without cloning big repos, and with
-  upstream credit. Triggers: "reverse engineer", "what does this blob/HAL do", "decompile", "avc
-  denials", "cherry-pick", "pick from AOSPA/Lineage/CLO", "port this HAL", "<maintainer> pushed, sync",
-  "what did upstream drop".
+  Investigate Android blobs, HALs, firmware and SELinux failures, or cherry-pick,
+  adapt and synchronize upstream changes into ROM and kernel trees. Use for
+  artifact-backed diagnosis, dependency-aware ports, upstream review and requested
+  Git history repair. Includes bounded fetches and static checks when builds are unavailable.
 ---
 
-# Reverse engineering & cherry-picking
+# Android investigation and upstream integration
 
-Two halves of one job: find out what something really does (RE), then bring the right change
-into our trees (pick or port) without breaking a build nobody is going to run.
+Establish what the target does, then bring in the smallest justified change with
+its original authorship. Applicability alone does not establish correctness.
 
-Scripts are in `scripts/` (Python 3 stdlib, git, authenticated `gh`; nothing else). Run them
-from this skill's folder as `python3 scripts/X.py` or `bash scripts/X.sh`; every one has `-h`.
+## Evidence and judgment
 
-## Ground rules
+- Think like an AOSP engineer: pin the branch and artifact, read the implementation
+  and callers, trace the interface contract, and verify dependencies in the target.
+  Prefer an existing platform mechanism over a clever workaround or invented API.
+- State facts, inferences and unknowns separately when they affect the decision.
+  Strings and imports suggest possible behavior; they do not prove execution.
+  Commit subjects and patch similarity are search aids, not current-tree parity.
+- Never fabricate an API, symbol, log, command result, test, provenance or certainty.
+  Be direct about missing hardware, source, tools, access or knowledge. If evidence
+  is insufficient, say so and identify the smallest check that would resolve it.
+- Challenge a bad assumption with technical evidence. If your own assumption was
+  wrong, acknowledge it and recheck dependent changes. Do not cover a knowledge
+  gap with confident wording, speculative tuning or broad permission grants.
+- Report what validation actually establishes. Static checks cannot prove a build,
+  boot, ABI compatibility, performance improvement or fixed runtime behavior.
 
-1. **Identity.** Commit as the user's own configured git identity (`git config user.name` /
-   `user.email`). Verify before every commit; never a work or default identity.
-2. **Credit upstream.** Picks keep the upstream author. Adapted ports: upstream author as author,
-   cite the source commit URL, `Co-authored-by` + `Signed-off-by` for the porter. Our own follow-up
-   to their change: the porter as author, `Co-authored-by: <them>`. `scripts/credit.py` prints it;
-   rules and examples in `references/credit.md`. Forked third-party skills are attributed fully —
-   see `references/credit-policy.md`.
-3. **Messages.** Technical only. No AI attribution trailers, never mention Apple/iOS or
-   "inspired by".
-4. **Hands off other people's repos.** No PRs, issues or comments upstream unless the user names
-   the repo. Push only to repositories the user controls.
-5. **No builds.** Nothing gets built to test. A change must be right by inspection plus
-   `scripts/preflight.py`. Never pick code that needs something the target tree lacks.
-6. **No big fetches.** Never clone a vendor repo or pull a large history: single patches via
-   `fetch-patch.py`, trees via the API, vendor edits via `vendor-api-commit.py`.
-7. **Work on copies.** Trial picks in throwaway worktrees. Never rewrite a pushed branch unless
-   asked; then `--force-with-lease` only.
+## Scope and repository conventions
 
-## Pick the playbook
+Inspect target repository state, manifest selection, source and destination refs,
+local changes and the task's constraints. Use a throwaway worktree for trial picks.
+Use configured target-repo identity as committer; preserve upstream authors, dates
+and source URLs. Technical messages, human credit, no AI trailers.
+
+Prefer existing clones and file/commit APIs over large history downloads, especially
+on constrained hosts. Respect explicit no-build instructions; otherwise use the
+checks appropriate to the task and available environment. Do not assume the host
+is a rooted phone. Scripts using `--live` or `--su` execute on the local host.
+
+Do not infer publishing or history-rewrite authority from a local edit. Honor
+existing authorization without repeatedly asking; verify the authorized repository
+and branch before writing. Published-history rewrites need explicit authorization,
+a backup and a lease pinned to the reviewed remote SHA. No unrequested upstream
+PRs, issues or comments. Keep private device maps and logs outside tracked skill text.
+
+## Choose a playbook
 
 | Task | Read |
 |---|---|
-| What does blob / HAL / app / node X do? Why is feature Y broken? | `references/reverse-engineering.md` |
-| SELinux denials to policy | `scripts/avc2rules.py --live --no-apps`, then the sepolicy part of the RE playbook |
-| Pick or port commits from another ROM, kernel, AOSP, CLO | `references/cherry-pick.md` |
-| A maintainer pushed device/vendor/hardware changes: sync them | `references/upstream-sync.md` |
-| How to fetch from GitHub, GitLab, googlesource, Gerrit, cgit | `references/sources.md` |
-| Will this tree still build? | `references/build-safety.md` + `scripts/preflight.py` |
-| Split a bulk import commit, clean history, fix authorship | `references/history-surgery.md` + `scripts/hunk-coverage.py` |
-| Shell, git and Termux gotchas | `references/pitfalls.md` |
-
-Device facts (repo map, upstreams, sync checkpoints, open leads) live in the device skill for
-the target device if one exists (e.g. the `rom-device-dev` runbook plus its private `_personal/`
-notes). Load it alongside this one.
+| Artifact or runtime investigation, SELinux diagnosis | [reverse-engineering.md](references/reverse-engineering.md) |
+| Pick or adapt commits across Android bases | [cherry-pick.md](references/cherry-pick.md) |
+| Review a maintainer's new commits | [upstream-sync.md](references/upstream-sync.md) |
+| Compare divergent device forks | [parallel-trees.md](references/parallel-trees.md) |
+| Fetch from GitHub, GitLab/CLO, Gitiles, Gerrit or cgit | [sources.md](references/sources.md) |
+| Static validation and its limits | [build-safety.md](references/build-safety.md) |
+| Authorship and provenance | [credit.md](references/credit.md) |
+| Requested history cleanup | [history-surgery.md](references/history-surgery.md) |
+| Shell, Git and Termux pitfalls | [pitfalls.md](references/pitfalls.md) |
+| Vendored-skill attribution | [credit-policy.md](references/credit-policy.md) |
 
 ## Tools
 
-| Script | What it does |
+Run scripts from this skill's directory; every script supports `-h`. Python scripts
+use the standard library. Shell scripts need Bash (upstream-diff needs Bash 4+).
+GitHub operations require `gh` and appropriate access. Local static scans do not.
+
+| Script | Purpose and limits |
 |---|---|
-| `fetch-patch.py` | Commit, range, PR or Gerrit change from any host to an mbox for `git am`; `--map old/=new/` relocates files, `--include/--exclude` filter, `-C REPO --check` trial-applies, `--am` applies |
-| `followups.py` | Later reverts, fixes and touches of a commit upstream. Run before every pick |
-| `hunk-coverage.py` | Which upstream commits explain a bulk commit, line coverage and leftover |
-| `credit.py` | Author and trailers for a port (`--mirror` for our follow-ups) |
-| `upstream-diff.sh` | Upstream branch vs our fork: HAVE / CLEAN / CONFLICT per commit, plus the other repos each commit references |
-| `blob-drops.sh` | Net proprietary-list changes between revisions (reorders ignored), marks what our fork ships |
-| `vendor-tree-diff.py` | Two vendor repos compared through the API, no clone |
-| `vendor-api-commit.py` | Drop modules/files or upload blobs in a vendor repo through the API. Dry run by default; refuses a drop another module still needs |
-| `preflight.py` | Static build checks: vendor makefiles, sepolicy duplicates and conflicts, duplicate VINTF HALs, init services, undefined device modules, list drift |
-| `blob-intel.py` | ELF RE without binutils: needed libs, exports, AIDL/HIDL interfaces, sysfs/dev nodes, props, paths, behaviour from imports; `--dir` for who-needs/missing/orphans; `--su` reads live `/vendor` |
-| `avc2rules.py` | Denials to `allow` / `set_prop` / `binder_call`, flags "label first" and neverallow risks; `--live` reads this device |
+| `fetch-patch.py` | Fetch mbox patches; optionally filter/map paths, trial `git am` in a worktree, or apply to the selected repo. Path transformations reject unsupported quoted paths. |
+| `followups.py` | Paginated path/date search for possible follow-ups on a pinned GitHub branch tip. Signals require review; renamed paths and older-dated commits can escape it. |
+| `upstream-diff.sh` | Cumulative trial picks: HAVE means a no-op at that trial state, CLEAN means applicable, CONFLICT needs inspection. Merges are skipped and require separate review. |
+| `hunk-coverage.py` | Added-line overlap between a bulk commit and candidate patches; not proof of semantic equivalence or authorship. |
+| `credit.py` | Format author/source/trailer information from upstream metadata. |
+| `blob-drops.sh` | Net list-entry additions/removals; strips flags and hashes, so review those changes separately. |
+| `vendor-tree-diff.py` | Compare vendor tree objects through GitHub without cloning. |
+| `vendor-api-commit.py` | Dry-run vendor module/file changes; `--apply` creates a commit and fast-forwards the branch. Checks a supported generated-file layout, not the complete Soong graph. |
+| `preflight.py` | Heuristic modules, vendor files, policy, VINTF and init checks over supplied roots. Read its warnings and unverified scope. |
+| `blob-intel.py` | ELF dependencies, symbols and strings; possible consumers and missing dependencies within the supplied dump. |
+| `avc2rules.py` | Group AVCs and propose policy candidates; label-first and risk notes do not establish a valid policy. |
 
-## The loop
+## Working loop
 
-**Reverse engineering**
-1. Write the question down: which node, prop, service, library, or why denied.
-2. Get the artifact: live device through `su -c`, a stock dump, the vendor repo, the APK.
-3. Native: `blob-intel.py`; Java: jadx/apktool/aapt2; behaviour: `strace`; denials: `avc2rules.py`.
-4. Confirm on the device (read the node, `getprop`, `logcat`) before writing code.
-5. Record what was learned in the device skill when it will matter again.
+1. Identify the question, artifact/revision and target contract. Gather evidence before editing.
+2. Review candidate diffs and possible follow-ups. Verify symbols, modules, interface
+   versions, policy, configuration and runtime consumers against the target.
+3. Trial the series in dependency order. Investigate conflicts and no-ops against
+   current content; do not skip a change because a similar title appears in history.
+4. Apply or adapt within scope, preserving local behavior and upstream credit.
+5. Review final diffs, run applicable checks, and state unresolved build/runtime gaps.
+6. If publication is authorized, publish in the actual dependency order and verify
+   destination refs. Record reviewed upstream SHAs, picks, skips and their reasons.
 
-**Cherry-pick / port**
-1. Find it (`references/sources.md`). Prefer sources on the same Android base and CLO tag.
-2. Vet it: `followups.py`, read the whole diff, list everything it needs (symbols, modules, types,
-   props, files, AIDL versions) and confirm each exists in our tree.
-3. Fetch and trial: `fetch-patch.py REF [--map ...] -C OUR_REPO --check`.
-4. Apply: `--am` (author kept) or `git cherry-pick -x` when the source is local. Adapt by hand
-   when layouts differ, then credit per `references/credit.md`.
-5. Verify: `preflight.py`, re-read the final diff.
-6. Push dependencies first (hardware, then vendor, then device), fast-forward only.
-
-## Report back
-
-- Per repo: new SHA, one line on what and why.
-- Skipped items, each with its reason (missing dependency, already have, reverted upstream).
-- What to check on the device (log tags, `ps -A | grep`, avc), and the upstream commit URLs.
+Report the change, source evidence, checks and remaining limitations plainly.
+Use `rom-device-dev` when available for device integration and private device notes;
+this skill's investigation and import workflow also works without that companion.

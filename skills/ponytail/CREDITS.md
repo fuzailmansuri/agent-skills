@@ -5,7 +5,7 @@ Ponytail project and its author.
 
 - Project: Ponytail, the lazy senior dev
 - Source: https://github.com/DietrichGebert/ponytail (`skills/ponytail/SKILL.md`)
-- Copied from commit: `09c434ab73ca43761c5d8b0c5d341926c2fba710` (2026-10-24)
+- Copied from commit: `96608e078b2d5ea607c5c3b8b5a54d1c1fba6846` (2026-10-29)
 - License: MIT, copyright (c) 2026 DietrichGebert. The upstream `LICENSE` is in this folder.
 - `SKILL.md` is byte-identical to that commit.
 

@@ -25,9 +25,6 @@ def me():
         sys.exit("git config user.name/user.email unset — set your own identity first")
     return f"{name} <{email}>"
 
-ME = me()
-
-
 def gh(path):
     out = subprocess.run(["gh", "api", path], capture_output=True, text=True)
     if out.returncode:
@@ -40,8 +37,9 @@ def main():
     ap.add_argument("repo")
     ap.add_argument("shas", nargs="+")
     ap.add_argument("--mirror", action="store_true")
-    ap.add_argument("--me", default=ME)
+    ap.add_argument("--me")
     a = ap.parse_args()
+    a.me = a.me or me()
 
     commits = [gh(f"repos/{a.repo}/commits/{s}") for s in a.shas]
     people = []
@@ -56,8 +54,11 @@ def main():
             seen.add(key)
             ordered.append(p)
 
-    author = a.me if a.mirror else ordered[0]
-    co = ordered if a.mirror else ordered[1:] + [a.me]
+    primary = commits[0]["commit"]["author"]
+    author = a.me if a.mirror else f"{primary['name']} <{primary['email']}>"
+    co = [p for p in ordered if p.lower() != author.lower()]
+    if not a.mirror and a.me.lower() != author.lower():
+        co.append(a.me)
 
     print(f"author: {author}")
     if not a.mirror and len(commits) == 1:

@@ -29,6 +29,17 @@ def gh(path):
     return json.loads(out.stdout)
 
 
+def pages(path):
+    """Read every page of a list endpoint, not just the first 100 commits."""
+    page = 1
+    while True:
+        batch = gh(f"{path}&per_page=100&page={page}")
+        yield from batch
+        if len(batch) < 100:
+            return
+        page += 1
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("repo")
@@ -36,6 +47,8 @@ def main():
     ap.add_argument("--branch", help="branch to search (default: the repo's default branch)")
     ap.add_argument("--max-files", type=int, default=20)
     a = ap.parse_args()
+    if a.max_files < 1:
+        ap.error("--max-files must be positive")
 
     R = f"repos/{a.repo}"
     c = gh(f"{R}/commits/{a.sha}")
@@ -44,12 +57,15 @@ def main():
     since = c["commit"]["committer"]["date"]
     files = [f["filename"] for f in c.get("files", [])]
     branch = a.branch or gh(R)["default_branch"]
+    tip = gh(f"{R}/commits/{quote(branch, safe='')}")["sha"]
     print(f"{sha[:12]} {subject}")
-    print(f"branch {branch}, after {since}, {len(files)} file(s)"
+    print(f"branch {branch} @ {tip[:12]}, after {since}, {len(files)} file(s) returned by commit endpoint"
           + (f", checking the first {a.max_files}" if len(files) > a.max_files else ""))
 
     def later(path):
-        return gh(f"{R}/commits?sha={quote(branch)}&path={quote(path)}&since={since}&per_page=100")
+        return list(pages(f"{R}/commits?sha={tip}&path={quote(path, safe='')}&since={quote(since, safe='')}"))
+
+    print("Scope: selected paths and committer dates only; renames, cross-repo fixes and older-dated commits can be missed.")
 
     hits = {}
     with ThreadPoolExecutor(6) as pool:
@@ -75,7 +91,7 @@ def main():
         rows.append((h["c"]["commit"]["committer"]["date"], flag, s, subj, len(h["files"])))
 
     if not rows:
-        print("no later commits touch these files")
+        print("no candidates found within the selected path/date scope")
         return
     order = {"REVERT": 0, "MENTION": 1, "FIX": 2, "TOUCH": 3}
     rows.sort(key=lambda r: (order[r[1]], r[0]))

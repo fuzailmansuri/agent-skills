@@ -8,8 +8,9 @@ large multi-hundred-commit rewrites with byte-identical trees.
 ## 0. Preconditions
 - Backup branch (`backup/pre-<what>`), never pushed.
 - Record the final tree: `git rev-parse HEAD^{tree}` — surgery must end with this exact SHA.
-- Rewriting history on a pushed branch is an **explicit fresh instruction**; suggest
-  `--force-with-lease`, and remind the user the whole commits page changes.
+- Rewriting history on a pushed branch is an **explicitly authorized action**; suggest
+  `--force-with-lease=refs/heads/BR:REVIEWED_SHA` for the reviewed destination.
+  Existing authorization persists; do not ask again for the same approved scope.
 
 ## 1. Classify before touching
 Run an author census (`git log --format='%an <%ae>' | sort | uniq -c | sort -rn`): reveals
@@ -33,7 +34,7 @@ names).
    when a co-author trailer is absent (grep the message first to avoid duplicates).
 
 ## 3. Practical traps that cost real time
-- A `GIT_SEQUENCE_EDITOR` script reads **stdin** — it receives the todo **file path as
+- A `GIT_SEQUENCE_EDITOR` script does not receive the todo on stdin; it receives its **file path as
   argv[1]** and must WRITE that file. A script that prints to stdout merges nothing
   ("nothing to do" is the symptom).
 - `filter-branch --msg-filter` sees the (env-normalized) `GIT_AUTHOR_NAME` when both filters
@@ -45,8 +46,9 @@ names).
   census again; spot-check the squashed subjects.
 
 ## 4. Push
-One flat force per approved rewrite (`git push --force` or `--force-with-lease`). Never
-interleave pushes between passes.
+Publish once after verifying the approved rewrite, with a lease pinned to the
+reviewed remote SHA. If the lease fails, inspect the moved branch; do not retry with
+unconditional force. Never interleave pushes between passes.
 
 ## 5. Splitting a bulk "import" commit into proper history
 
@@ -57,6 +59,8 @@ lines) hides authorship and shows nothing a reviewer can read. Split it:
    one file per commit) into a scratch dir.
 2. **Measure.** `python3 scripts/hunk-coverage.py COMMIT PATCH_DIR -C REPO` lists which
    upstream commits explain how many of the commit's added lines, and what is left over.
+   Overlapping lines are candidates, not proof of provenance. Verify the full changes,
+   source revisions and author metadata before attributing or replaying them.
 3. **Replay upstream-explained parts** as separate commits: upstream author and date kept
    (`git commit --author=... --date=...`), upstream subject, body with the source URL or a
    `(cherry picked from commit SHA)` line, then `Signed-off-by: <you>`. Assign each upstream
@@ -64,12 +68,14 @@ lines) hides authorship and shows nothing a reviewer can read. Split it:
    (check `git log --format=%s | sort | uniq -d` before pushing).
 4. **Group the leftover** into your own topical commits (one subsystem per commit: avb,
    sepolicy, overlays, props...), short subject and `* ` bullets, you as author.
-5. **Drop what is unused** instead of preserving it: an overlay/RRO entry whose resource name
-   does not exist in the package it overlays, a file nothing references. Check each against
-   the target tree before keeping it.
-6. **Strip Gerrit `Change-Id:` lines** from replayed messages.
-7. **Verify.** Final tree equals the recorded tree except the entries dropped on purpose
-   (`git diff OLD NEW --stat` should list only those). Run `preflight.py`.
+5. **Preserve content during history-only work.** Potentially unused entries are
+   separate functional changes. Prove their consumer scope and review them separately;
+   do not silently delete them during an authorship or commit-structure cleanup.
+6. **Handle Gerrit `Change-Id:` for the destination.** Retain it when continuing
+   the same review; avoid reusing it for an unrelated change.
+7. **Verify.** For history-only work, the final tree equals the recorded tree.
+   Review authorship and provenance as well as content. A static preflight scan does
+   not replace this equality check.
 
 Do the work in a throwaway `git worktree` on a new branch so a running build in the main
 checkout is untouched; the user later runs `git reset --hard <remote>/<branch>` themselves.

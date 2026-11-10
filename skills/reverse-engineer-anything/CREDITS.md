@@ -6,7 +6,7 @@ concept, structure, and instructions belongs entirely to the REA project and its
 
 - Project: REA (Reverse Engineer Anything)
 - Source: https://github.com/morluto/rea (`.agents/skills/reverse-engineer-anything`)
-- Synced from commit: `dba8a319789a09d61a11206d3d581514416c9149` (2026-10-24)
+- Synced from commit: `a4b4957346e3fc454c97491183bb2a55a895766a` (2026-11-10)
 - License: MIT, copyright (c) 2026 morluto. The upstream `LICENSE` is in this folder.
 - Package: `rea-agents` on npm (the skill is installed via `npx rea-agents setup`)
 - The author of this fork made no changes of substance; `SKILL.md` and every file in

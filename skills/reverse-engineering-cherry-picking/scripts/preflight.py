@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static build-safety checks for an Android device tree, for when nobody builds.
+"""Heuristic static checks for an Android device tree; not a build or policy compiler.
 
   lists     drift between proprietary-*.txt and the vendor repo (bites on the next re-extract)
   vendor    <device>-vendor.mk names with no module, module srcs / copy sources that do not exist
@@ -75,7 +75,7 @@ def module_names(root):
     for p in files_under(root, lambda p: p.endswith(("Android.bp", "Android.mk"))):
         src = text(p)
         if p.endswith(".bp"):
-            names.update(re.findall(r'^\s{4}name:\s*"([^"]+)"', src, re.M))
+            names.update(re.findall(r'^\s*name:\s*"([^"]+)"', src, re.M))
         else:
             names.update(re.findall(r"^\s*LOCAL_(?:MODULE|PACKAGE_NAME)\s*:?=\s*(\S+)", src, re.M))
     return names
@@ -229,13 +229,19 @@ def check_sepolicy(dirs):
     ctx = defaultdict(lambda: defaultdict(set))
     decl_re = re.compile(r"^\s*(?:type|attribute)\s+(\w+)\s*[,;]"
                          r"|^\s*(?:vendor|system|product)_(?:internal|restricted|public|vendor_config)_prop\(\s*(\w+)\s*\)", re.M)
+    visited = set()
     for d in dirs:
         scope = "vendor" if "/vendor" in d else "private" if "/private" in d else "public" if "/public" in d else d
         for p in files_under(d, lambda p: p.endswith((".te", "_contexts"))):
+            p = os.path.realpath(p)
+            if p in visited:
+                continue
+            visited.add(p)
             src = text(p)
             if p.endswith(".te"):
                 for m in decl_re.finditer(src):
-                    decls[m.group(1) or m.group(2)].add(p)
+                    line = src.count("\n", 0, m.start()) + 1
+                    decls[m.group(1) or m.group(2)].add(f"{p}:{line}")
                 continue
             kind = os.path.basename(p)
             if kind == "seapp_contexts":
@@ -247,6 +253,9 @@ def check_sepolicy(dirs):
                 parts = line.split()
                 if kind == "genfs_contexts" and len(parts) >= 4:
                     key, label = (parts[1], parts[2]), parts[3]
+                elif kind == "property_contexts" and len(parts) >= 2:
+                    # Android permits a match mode and value type after the context.
+                    key, label = (parts[0], parts[2] if len(parts) > 2 else "prefix"), parts[1]
                 elif len(parts) >= 2:
                     key, label = parts[0], parts[-1]
                 else:
@@ -254,7 +263,7 @@ def check_sepolicy(dirs):
                 ctx[(scope, kind, key)][label].add(p)
     for name, where in sorted(decls.items()):
         if len(where) > 1:
-            err("sepolicy", f"{name} declared in {len(where)} files: {', '.join(sorted(where))}")
+            err("sepolicy", f"{name} declared at {len(where)} locations: {', '.join(sorted(where))}")
     for (scope, kind, key), labels in sorted(ctx.items(), key=lambda kv: str(kv[0])):
         files = {f for fs in labels.values() for f in fs}
         if len(labels) > 1:
@@ -265,10 +274,7 @@ def check_sepolicy(dirs):
 
 
 def hal_keys(xml_src):
-    try:
-        root = ET.fromstring(xml_src)
-    except ET.ParseError:
-        return []
+    root = ET.fromstring(xml_src)
     if root.tag != "manifest":
         return []
     keys = []
@@ -277,25 +283,32 @@ def hal_keys(xml_src):
             continue
         fmt, name = hal.get("format", "hidl"), (hal.findtext("name") or "").strip()
         for fq in hal.findall("fqname"):
-            keys.append((fmt, name, fq.text.strip()))
+            keys.append((fmt, name, (fq.text or "").strip()))
         for itf in hal.findall("interface"):
             for inst in itf.findall("instance"):
                 ver = (hal.findtext("version") or "").strip()
-                keys.append((fmt, name, f"{('@' + ver + '::') if fmt == 'hidl' else ''}{itf.findtext('name').strip()}/{inst.text.strip()}"))
+                keys.append((fmt, name, f"{('@' + ver + '::') if fmt == 'hidl' else ''}{(itf.findtext('name') or '').strip()}/{(inst.text or '').strip()}"))
     return keys
 
 
 def check_vintf(sources):
     seen = defaultdict(set)
     for label, src in sources:
-        for k in hal_keys(src):
-            seen[k].add(label)
+        try:
+            keys = hal_keys(src)
+        except ET.ParseError as exc:
+            err("vintf", f"{label}: invalid XML: {exc}")
+            continue
+        for index, k in enumerate(keys, 1):
+            seen[k].add(f"{label} (entry {index})")
     for k, where in sorted(seen.items()):
         if len(where) > 1:
             err("vintf", f"{k[1]} {k[2]} ({k[0]}) declared by: {', '.join(sorted(where))}")
 
 
 def main():
+    ERRORS.clear()
+    WARNS.clear()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dt", required=True)
     ap.add_argument("--hw", action="append", default=[])
@@ -305,9 +318,14 @@ def main():
     g.add_argument("--vendor-dir")
     ap.add_argument("--token", action="append", default=[], help="extra device-specific name fragment")
     a = ap.parse_args()
+    for directory in [a.dt] + a.hw + a.module_dir + ([a.vendor_dir] if a.vendor_dir else []):
+        if not os.path.isdir(directory):
+            ap.error(f"not a directory: {directory}")
     dt = os.path.abspath(a.dt)
 
     mk_src = "\n".join(text(p) for p in files_under(dt, lambda p: p.endswith(".mk")))
+    if not mk_src.strip():
+        ap.error(f"no nonempty Make files found in device tree: {dt}")
     packages = set(mk_lists(mk_src))
     codename = (re.findall(r"^\s*PRODUCT_DEVICE\s*:?=\s*(\S+)", mk_src, re.M) or [os.path.basename(dt)])[0]
     brand = (re.findall(r"^\s*PRODUCT_(?:BRAND|MANUFACTURER)\s*:?=\s*(\S+)", mk_src, re.M) or [""])[0]
@@ -322,7 +340,7 @@ def main():
     else:
         vendor_pkgs, vendor_copies = None, set()
 
-    se_dirs = [d for d in (os.path.join(dt, "sepolicy", s) for s in ("vendor", "private", "public")) if os.path.isdir(d)]
+    se_dirs = [os.path.join(dt, "sepolicy")] if os.path.isdir(os.path.join(dt, "sepolicy")) else []
     for hw in a.hw:
         se_dirs += eval_hw_sepolicy(os.path.abspath(hw), packages, codename)
     check_sepolicy(se_dirs)
@@ -364,6 +382,9 @@ def main():
         for sec, msg in items:
             print(f"{title:5} [{sec}] {msg}")
     print(f"\n{len(ERRORS)} error(s), {len(WARNS)} warning(s)")
+    print("Static scan only: Make/Soong selection, neverallow, merged VINTF, ABI and runtime behavior remain unverified.")
+    if not v:
+        print("Vendor and proprietary-list checks skipped: no vendor input supplied.")
     sys.exit(1 if ERRORS else 0)
 
 

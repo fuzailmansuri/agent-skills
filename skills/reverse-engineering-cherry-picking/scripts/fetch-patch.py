@@ -114,6 +114,8 @@ def split_mbox(text):
 
 def rewrite(patch, maps, inc, exc):
     """Filter and move the per-file sections of one patch."""
+    if not (maps or inc or exc):
+        return patch, [], []
     lines = patch.split("\n")
     sep = next((i for i, l in enumerate(lines) if l == "---"), None)
     first = next((i for i, l in enumerate(lines) if l.startswith("diff --git ") and (sep is None or i > sep)), None)
@@ -150,7 +152,13 @@ def rewrite(patch, maps, inc, exc):
             dropped.append(src)
             continue
         out = []
+        in_payload = False
         for line in ch:
+            if line.startswith(("@@", "GIT binary patch", "Binary files ")):
+                in_payload = True
+            if in_payload:
+                out.append(line)
+                continue
             for pre in ("diff --git ", "--- a/", "+++ b/", "rename from ", "rename to ", "copy from ", "copy to "):
                 if line.startswith(pre):
                     if pre == "diff --git ":
@@ -167,19 +175,20 @@ def rewrite(patch, maps, inc, exc):
     return "\n".join(head + [l for ch in kept_chunks for l in ch] + trailer), kept, dropped
 
 
-def _git_identity():
-    name = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True).stdout.strip()
-    email = subprocess.run(["git", "config", "user.email"], capture_output=True, text=True).stdout.strip()
+def _git_identity(repo):
+    name = subprocess.run(["git", "-C", repo, "config", "user.name"], capture_output=True, text=True).stdout.strip()
+    email = subprocess.run(["git", "-C", repo, "config", "user.email"], capture_output=True, text=True).stdout.strip()
     return name, email
 
 
 def git_am(repo, mbox, trial):
     env = dict(os.environ)
-    name, email = _git_identity()
+    name, email = _git_identity(repo)
     if not name or not email:
         sys.exit("git config user.name/user.email unset — set your own identity first")
-    env.setdefault("GIT_COMMITTER_NAME", name)
-    env.setdefault("GIT_COMMITTER_EMAIL", email)
+    env["GIT_COMMITTER_NAME"] = name
+    env["GIT_COMMITTER_EMAIL"] = email
+    mbox = os.path.abspath(mbox)
     if not trial:
         r = subprocess.run(["git", "-C", repo, "am", "-3", mbox], env=env, capture_output=True, text=True)
         print(r.stdout + r.stderr)
@@ -221,6 +230,8 @@ def main():
     g.add_argument("--check", action="store_true")
     g.add_argument("--am", action="store_true")
     a = ap.parse_args()
+    if (a.check or a.am) and not a.repo:
+        ap.error("--check/--am need -C REPO")
     maps = [tuple(m.split("=", 1)) for m in a.map]
     if any(len(m) != 2 for m in maps):
         sys.exit("--map wants OLD=NEW")
@@ -254,9 +265,8 @@ def main():
 
     out = a.out
     if not out:
-        d = os.path.join(os.environ.get("TMPDIR") or os.path.join(os.environ.get("PREFIX", ""), "tmp"), "picks")
-        os.makedirs(d, exist_ok=True)
-        out = os.path.join(d, datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + ".mbox")
+        d = tempfile.mkdtemp(prefix="picks.")
+        out = os.path.join(d, "series.mbox")
     with open(out, "w") as fh:
         fh.write("\n".join(out_patches))
     print(f"\nwrote {len(out_patches)} patch(es) to {out}")

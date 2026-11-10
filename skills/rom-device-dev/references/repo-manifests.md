@@ -1,41 +1,27 @@
-# Repositories, manifests & fast patching workflow
+# Manifests and cross-repository changes
 
-## 1. Manifest & branch architecture (template)
+The effective `repo` manifest includes the selected manifest revision, includes,
+local manifests, project overrides, groups and per-project revisions. Inspect
+`.repo/manifest.xml` and local manifests; use `repo manifest -r` when available to
+record checked-out revisions. The manifest selects projects, while product/build
+configuration determines what is compiled and installed.
 
-A ROM build is governed by one manifest repo:
-- **ROM manifest:** `<rom-org>/manifest@<branch>` — the daily-driver base.
-- **Local manifests & patchsets:** your own `<you>/android-manifest@<branch>` with
-  `patches/` and repo overrides for every customized component (device, hardware, vendor,
-  kernel, frameworks, LaunCher).
-- **Sandbox / experiment branches:** kept as branches across the *entire* repo set (device,
-  frameworks, vendor, manifest), never mixed into the daily branch.
+Keep each component in its existing repository and branch model. Localize the
+projects that differ from upstream; avoid inventing a separate branch across every
+repository for a change affecting only one component. Isolate work from a running
+build or unrelated local modifications.
 
-Keep each component in its own fork; localize only the repos that deviate from upstream, so
-the manifest diff is the inventory of your customizations.
+Prefer existing source and bounded commit/file fetches. The cherry-picking skill's
+`fetch-patch.py` supports authenticated GitHub requests and trial application in a
+worktree. A raw `git apply --check` checks applicability to the selected working
+tree; it does not preserve commit authorship or evaluate build dependencies.
 
-## 2. Fast patching (no big fetches)
+For each change, establish module definitions, namespaces, interface versions,
+partition placement, generated outputs and manifest ownership. Static preflight
+scans are supplemental; they do not evaluate the full Make/Soong graph.
 
-Fetching whole repo histories (frameworks/base is many GB) consumes device storage and
-mobile bandwidth. Patch-level paths:
-
-```bash
-gh api repos/<owner>/<repo>/commits?per_page=10                     # list
-curl -s -H "Accept: application/vnd.github.patch" \
-  https://api.github.com/repos/<owner>/<repo>/commits/<sha>  > /tmp/p.patch
-git apply --check /tmp/p.patch && git apply --3way /tmp/p.patch      # index-only pre-checks
-```
-`fetch-patch.py` (cherry-picking skill) handles this for GitHub, GitLab/CodeLinaro,
-googlesource, Gerrit and kernel.org, with path mapping and trial-apply into a worktree.
-
-## 3. Verification without builds
-
-- Inspect imports, method signatures and symbol presence against the target branch **before**
-  applying: unresolved symbols or missing proprietary dependencies are the most common
-  silent breakage.
-- Run `scripts/preflight.py` (cherry-picking skill): duplicate VINTF HALs, SEP duplicates,
-  init services without domains, undefined PRODUCT modules, list drift.
-- Recheck every `sepolicy` addition: one rule per denial, minimal grants.
-
-## 4. Push ordering
-Dependencies push first (hardware → vendor → device), fast-forward only; the device tree
-pulls the last so the parent repos exist in the manifest before it references them.
+When publishing is authorized, order repositories by their actual dependency graph.
+Publish a dependency before a manifest or consumer points to its new revision.
+Hardware → vendor → device is an example, not a universal order. Verify remote
+SHAs and the resulting manifest selection; a push alone does not change a build
+whose manifest still selects another repository or revision.

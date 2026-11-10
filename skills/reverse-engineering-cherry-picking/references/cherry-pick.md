@@ -4,15 +4,17 @@
 
 - Where the change lives and how to fetch it: `sources.md`.
 - Prefer sources on the same Android version and CLO tag (LineageOS device/HAL repos, AOSPA,
-  CLO-based ROMs). For YAAP, never pick anything that needs code YAAP lacks (e.g. QTI
-  BoostFramework hooks).
+  CLO-based ROMs). Verify every external framework/vendor dependency against the
+  actual target; a shared Android version does not guarantee the same APIs.
 - Search by path first (`gh api 'repos/O/R/commits?sha=BR&path=P&per_page=30'`), then by subject.
   GitHub commit search covers default branches only.
 
 ## 2. Vet before fetching
 
-1. `python3 scripts/followups.py O/R SHA --branch BR`. A REVERT means don't pick it. A FIX or
-   MENTION means pick the follow-up too, in order.
+1. `python3 scripts/followups.py O/R SHA --branch BR` finds possible follow-ups in a
+   bounded path/date scope. Read relevant diffs: a REVERT needs its rationale reviewed,
+   and a FIX or MENTION is a candidate, not an automatic dependency. Search broader
+   history when renames, timestamps or omitted paths leave uncertainty.
 2. Read the whole diff. List everything it needs that it does not add: classes/methods, soong
    modules and AIDL versions (`android.hardware.light-V3-rust`), sepolicy types and macros, props,
    resources, files, kernel configs.
@@ -45,17 +47,17 @@ and files.
 | Needs an earlier upstream commit | Pick that first. Find it with `followups.py` or a path log ending at the commit date |
 | Different design on our side | Hand-port the minimal equivalent. Upstream author if it's their change; credit per `credit.md` |
 
-Huge repos (frameworks/base and friends): never fetch. Use `fetch-patch.py`, apply into the
-existing local clone, and push.
+Prefer the existing local clone and bounded patch fetches for large repositories.
+Fetch missing objects only when needed and within the task's resource constraints.
 
 ## 5. Credit
 
 `python3 scripts/credit.py O/R SHA [SHA...]` (or `--mirror`). Rules: `credit.md`. Keep the
 upstream subject when the change is the same; later syncs then recognise it as already picked.
 
-## 6. Verify, push, record
+## 6. Verify and record; publish when authorized
 
 - `preflight.py` for device trees (`build-safety.md` for the rest).
 - Re-read `git show` for every new commit: identity, credit, message style.
-- Push dependencies first, fast-forward only, and verify the remote tip through the API.
+- When publication is authorized, push in the actual dependency order and verify remote tips.
 - If the source is a tracked upstream, add a sync-log entry in the device skill.

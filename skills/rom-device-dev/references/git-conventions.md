@@ -1,42 +1,41 @@
-# Git conventions & policies
+# Git identity, credit and publishing
 
-## 1. Identity
-- Commits use the user's own git identity (`git config user.name` / `user.email`). Verify
-  before the first commit of every session.
-- Never commit with a work email, distro/termux defaults, or any identity that is not the
-  user's. If the config is wrong, fix the repo-local config, not history.
-- Authorship of upstream code is a credit matter, not an identity matter:
-  see `reverse-engineering-cherry-picking`, `references/credit.md` (upstream author keeps
-  authorship on picks and ports).
+## Identity and messages
 
-## 2. Commit message style
-- **Technical:** what changed and why, with the mechanism. No filler ("clean up", "fix some").
-- **No inspiration mentions:** never name another OS or vendor design (Apple/iOS included) in
-  the message; describe the actual mechanism instead. Bad: "Add iOS-style slider animation".
-  Good: "SystemUI: Implement scalable continuous slider with dynamic corner radius".
-- **No AI attribution trailers.** Human co-authors only.
-- AOSP style prefixes when appropriate (`device:`, `sepolicy:`, `overlay:`, subsystem `:`).
-- Shape: `device: Subject` (imperative, short), blank line, optional `* ` bullets for the
-  mechanism, `Signed-off-by` last. No essays, no "this commit", no marketing words.
-- One topic per commit. A bulk "import from X" commit is a defect: split it per upstream
-  commit/author and per subsystem (`reverse-engineering-cherry-picking`,
-  `references/history-surgery.md` section 5). Never keep Gerrit `Change-Id:` lines.
-- Other ROMs by name are fine only as a credited source URL, not as the reason for a change.
+Read `git -C TARGET config user.name` and `user.email` before committing. Use the
+user's intended configured identity; do not invent one or change global config.
+A work email is not inherently wrong if it is the user's chosen identity.
 
-## 3. Remote operations & PR safety
-- Never open PRs, issues, discussions or comments against third-party or upstream repos
-  (ROM orgs, CLO, AOSP, individual maintainers). Only act on repositories the user controls.
-- Verify the remote URL before every push; prefer `--force-with-lease` over bare force.
-- Pushing to a fork is invisible to a ROM build unless the manifest points at that fork and
-  branch — check the manifest.
+Preserve authorship and source URLs for upstream work. Use technical commit messages
+that explain behavior and mechanism, with the repository's usual subsystem prefix.
+Retain human credit; do not add AI attribution trailers. Avoid marketing or claims
+of inspiration. Name an upstream project when it supplies relevant provenance.
 
-## 4. History rewriting
-- Never rewrite a pushed branch without an explicit fresh instruction from the user.
-- Before any surgery: create a local backup branch (`backup/<what>`), record
-  `git rev-parse HEAD^{tree}`, work on a branch, never on the shared remote directly.
-- Force-push language: `git push --force-with-lease` for single-user, or plain `--force`
-  when the user explicitly approves a history replacement.
+Keep changes coherent and reviewable. Do not split, squash or rewrite existing
+history merely because a different presentation is preferred. Preserve Gerrit
+Change-Id when continuing the same review; adapt trailers to the actual destination.
+Use sign-offs according to the target's contribution policy and the user's authority
+rather than treating generated text as a substitute for that attestation.
 
-## 5. Org presentation
-- AI-assisted work is disclosed in the **org profile README** (`<org>/.github/profile/README.md`),
-  not in the device tree: one short note, no model names. Commits never carry AI trailers.
+## Remote operations
+
+Stay within the requested repositories and actions. A local fix does not by itself
+request publication or modification of upstream projects. Existing authorization
+persists; do not ask again for an action already clearly authorized. Verify the
+exact remote URL and branch before writing. Check the effective manifest when the
+published change is supposed to alter a ROM build.
+
+## Requested history rewriting
+
+Record local and remote tips and `HEAD^{tree}`, create a backup, and work on an
+isolated branch. A history-only rewrite must preserve the final tree and authorship;
+functional changes need separate review. Do not discard entries as unused during
+an authorship-only cleanup.
+
+For an explicitly authorized published-history rewrite, use
+`git push --force-with-lease=refs/heads/BRANCH:REVIEWED_SHA`. A lease failure means
+the remote moved: inspect it before proceeding. Never retry with unconditional
+force. Detailed mechanics live in the cherry-picking skill's history-surgery guide.
+
+Do not edit organization profiles, disclosures or unrelated documentation as a side
+effect of a coding or credit task.

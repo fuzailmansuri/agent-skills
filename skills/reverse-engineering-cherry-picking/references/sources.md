@@ -15,6 +15,10 @@ listing, searching and reading single files.
 | What someone pushed lately | `gh api 'users/U/repos?sort=pushed&per_page=10'` |
 | Code search | `gh search code 'SYMBOL repo:O/R'` (default branch only) |
 
+Check pagination on list endpoints and the `truncated` flag on recursive tree
+responses. Encode ref/path query values and pin moving refs before comparing. A
+partial response does not justify a complete-history or absence claim.
+
 Cross-repo compare (`ours...them:branch`) only works inside one fork network. Otherwise it
 returns 404; compare trees (`vendor-tree-diff.py`) or patches instead.
 
@@ -49,7 +53,7 @@ returns 404; compare trees (`vendor-tree-diff.py`) or patches instead.
 
 ## Common GitHub orgs for Android picks
 
-LineageOS (device/HAL/sepolicy), AOSPA (QTI-heavy, CLO based), yaap (our base), crdroidandroid,
+LineageOS (device/HAL/sepolicy), AOSPA (QTI-heavy, CLO based), yaap, crdroidandroid,
 PixelOS-AOSP, Evolution-X, and the active device-tree maintainers for your device. Check
 the org exists before citing it. Org names change; a fork's parent may surprise you
 (`gh repo view --json parent`).

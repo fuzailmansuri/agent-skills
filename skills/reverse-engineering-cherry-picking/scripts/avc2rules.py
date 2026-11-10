@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn SELinux denials (dmesg / logcat / audit) into sepolicy, the right way.
+"""Group SELinux denials and suggest policy candidates for manual review.
 
 Reads denials, merges them per (domain, target, class), and prints allow rules,
 but first tells you when the fix is a label (genfscon / file_contexts /
@@ -11,7 +11,7 @@ usage: avc2rules.py [FILE ...] [--domain D] [--no-apps] [--te] [--live]
   --live    read `dmesg` and `logcat -b all -d` through su on this device
   --domain  only this source domain
   --no-apps skip app domains (untrusted_app*, isolated_app*, ...), keep the ROM's own
-  --te      group rules per domain, ready to paste into <domain>.te
+  --te      group candidate rules per domain; validate against the target policy
 """
 import argparse
 import re
@@ -84,9 +84,13 @@ def main():
     a = ap.parse_args()
 
     lines = []
+    read_failed = False
     if a.live:
         for cmd in ("dmesg", "logcat -b all -d"):
             out = subprocess.run(["su", "-c", cmd], capture_output=True, text=True, errors="replace")
+            if out.returncode:
+                print(f"cannot read {cmd}: {out.stderr.strip() or 'command failed'}", file=sys.stderr)
+                read_failed = True
             lines += out.stdout.splitlines()
     for path in a.files:
         with open(path, errors="replace") as fh:
@@ -100,8 +104,8 @@ def main():
     if a.no_apps:
         seen = {k: v for k, v in seen.items() if not re.match(r"^(untrusted_app|isolated_app|ephemeral_app|sdk_sandbox)", k[0])}
     if not seen:
-        print("no denials")
-        return
+        print("no matching denials in the available input")
+        return 1 if read_failed else 0
 
     by_domain = defaultdict(list)
     for key in sorted(seen):
@@ -142,7 +146,8 @@ def main():
                 if e["ioctls"]:
                     print(f"allowxperm {dom} {tgt}:{cls} ioctl {{ {' '.join(sorted(e['ioctls']))} }};")
             print()
+    return 1 if read_failed else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

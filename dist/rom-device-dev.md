@@ -2,457 +2,498 @@
 ---
 name: rom-device-dev
 description: >-
-  Engineering runbook and strict rules for developing and maintaining an Android ROM device
-  tree for any device and ROM (device/, hardware/, proprietary vendor, kernel, manifests,
-  sepolicy). Use when doing device bring-up or ongoing maintenance, porting subsystem
-  behaviour between trees, first-boot debugging of a broken feature, Android kernel-level
-  work (bring-up, modules, devicetrees), framework-level props and integrity plumbing,
-  SystemUI/Launcher daily-driver customization, or audits where no build is available.
+  Develop and maintain Android ROM device trees, HAL integration, kernels, manifests,
+  and SELinux policy. Use for device bring-up, subsystem failures, cross-tree ports,
+  or SystemUI and framework changes that depend on device integration.
 ---
 
-# ROM device development runbook
+# Android device engineering
 
-Ground rules every task inherits. Detail lives in `references/`; upstream mechanics and
-credit live in the `reverse-engineering-cherry-picking` skill.
+Work like an AOSP engineer: establish the target, trace the mechanism, change the
+smallest responsible layer, and verify what the available environment can prove.
 
-## Ground rules
+## Engineering judgment and honesty
 
-1. **Identity.** Commits carry the **user's own configured git identity** (`git config
-   user.name` / `user.email`). Verify before every commit session; never commit with a work,
-   default or unrelated identity. Authorship of other people's code rules:
-   `reverse-engineering-cherry-picking`, `references/credit.md`.
-2. **Commit style.** Technical only: what changed, why, the mechanism. No "inspired by"
-   references to other OSes, no milestones, no AI attribution trailers. Human co-authors are
-   always credited.
-3. **No builds.** Nothing gets built to test — work must be right by inspection, symbol
-   checking and `scripts/preflight.py` (from the cherry-picking skill). Propose change sets
-   whose dependencies are proven to exist in the active tree; never propose whole-ROM ports
-   that need trial build cycles.
-4. **No big fetches.** Never clone large histories on device storage/budget. Fetch single
-   commits or patches via the API (`fetch-patch.py`, `vendor-api-commit.py`).
-5. **PR safety.** Never open PRs, issues or comments against upstream repositories. Any
-   push/PR targets repositories the **user controls** only. Verify the remote URL before
-   pushing.
-6. **Private device data.** Actual fork maps, sync logs and open leads live in `_personal/`
-   (gitignored). The public, reusable template lives in
-   [references/upstreams-template.md](./references/upstreams-template.md). Update the private
-   log after every sync; never commit real names/SHAs into the shared template.
-7. **History protection.** Never rewrite a pushed branch without an explicit fresh
-   instruction; take backups first. Full safe-surgery method:
-   `reverse-engineering-cherry-picking`, `references/history-surgery.md`.
-8. **Import only what is used.** Every imported line must be consumed by something in the
-   tree, and every imported commit keeps its original author
-   (`references/device-tree-audit.md` section 4). This is the same instinct as the
-   `ponytail` skill: the best change is the one you never had to write.
+- Ground claims in the checked-out branch, shipped artifacts, or captured device
+  evidence. Memory, a sibling device, a commit subject, and a plausible explanation
+  are leads, not proof. Never invent an API, property, module, log, test, or result.
+- Separate **observed facts**, **inferences**, and **unknowns**. Say "I don't know yet"
+  when appropriate, identify the missing evidence, and get it when tools permit.
+- Be candid about capabilities. State when source, hardware, permissions, tools,
+  or expertise are insufficient. Static review cannot prove compilation, boot,
+  runtime behavior, performance, or compatibility. Do not turn a failed check into
+  a success claim or call a hypothesis a root cause.
+- Prefer established AOSP and target-tree mechanisms. Trace their contracts before
+  inventing a wrapper, service, property, tuning value, or workaround. Challenge a
+  proposed fix when evidence contradicts it; explain the technical reason plainly.
+- When wrong, name the mistaken assumption, correct it, and revisit dependent
+  changes. Do not defend a guess, conceal uncertainty, or keep changing unrelated
+  knobs until a symptom disappears.
+
+For diagnosis, uncertain conclusions, or a disputed approach, read
+[engineering judgment](references/engineering-judgment.md).
+
+## Establish the working context
+
+Identify the product/device, Android branch, vendor build, kernel family, affected
+repositories and manifest revisions. Inspect local changes before editing. Do not
+assume this host is the phone or reuse another task's device paths and constraints.
+Use an isolated worktree when the active checkout is building or contains other work.
+
+Respect the user's build and resource constraints. Start with focused static checks;
+run builds or device tests when requested or appropriate within the task's scope.
+An explicit no-build instruction remains binding. Prefer local source and bounded
+patch fetches; avoid large clones when a file or commit answers the question.
+
+## Make the change reviewable
+
+1. Trace the symptom from caller through framework, interface, service, driver and
+   configuration as applicable. Compare stock and ROM at matching revisions.
+2. Check dependencies in the target: module selection and namespaces, interface
+   versions, partition placement, init startup, policy and kernel ABI.
+3. Fix the owning layer. Preserve calibration and existing behavior outside the
+   request. Absence from one search is not proof that code or a blob is unused.
+4. Review the final diff and run checks that exercise the changed mechanism. Report
+   each check's scope and result; list unresolved gaps without claiming readiness.
+
+The companion `reverse-engineering-cherry-picking` skill supplies import tooling
+and `preflight.py`. Use it when available for those tasks; its scan is heuristic,
+not a Make/Soong evaluation, policy compiler, VINTF merge, or runtime test.
+
+## Repository conventions
+
+Use the target repository's configured committer identity; retain upstream authors
+and source URLs for imported work. Technical messages, human credit, no AI trailers.
+Keep device-specific fork maps and logs in gitignored `_personal/`; public examples
+use placeholders. Do not expand a local task into publishing, changing other repos,
+or rewriting published history. Existing explicit authorization remains valid;
+check the exact destination and use a pinned force-with-lease for an authorized rewrite.
 
 ## Reference index
 
 | Task | Read |
 |---|---|
-| Device tree / HAL audit, sibling-device reasoning | `references/device-tree-audit.md` |
-| A feature broke after first boot — systematic debug | `references/first-boot-debugging.md` |
-| Git identity, commit style, credit summary, org README | `references/git-conventions.md` |
-| Repo layout, manifests, fast patching | `references/repo-manifests.md` |
-| Kernel-level work: bring-up, modules, devicetrees | `references/kernel-level-work.md` |
-| Props spoofing & integrity hygiene | `references/props-integrity.md` |
-| SystemUI / Launcher customization | `references/ui-ux-systemui.md` |
-| Where to keep the fork map and sync log | `references/upstreams-template.md` |
+| Evidence, uncertainty, root-cause reasoning | [engineering-judgment.md](references/engineering-judgment.md) |
+| Device/HAL audit and sibling-device comparison | [device-tree-audit.md](references/device-tree-audit.md) |
+| First-boot or subsystem failure | [first-boot-debugging.md](references/first-boot-debugging.md) |
+| Identity, credit, publishing and history | [git-conventions.md](references/git-conventions.md) |
+| Manifest selection and cross-repo changes | [repo-manifests.md](references/repo-manifests.md) |
+| Kernel, modules and device trees | [kernel-level-work.md](references/kernel-level-work.md) |
+| Build properties, KeyMint and attestation | [props-integrity.md](references/props-integrity.md) |
+| SystemUI and Launcher integration | [ui-ux-systemui.md](references/ui-ux-systemui.md) |
+| Private fork map and sync log | [upstreams-template.md](references/upstreams-template.md) |
 
 
 ---
 
 <!-- references/device-tree-audit.md -->
 
-# Device tree & hardware HAL auditing
+# Device tree and HAL review
 
-## 1. Sibling-device reasoning (the core method)
+## Compare the correct baselines
 
-When your tree lacks something, do not invent it — find the closest known-good tree and diff:
+Choose a known-good reference with compatible hardware, firmware, Android base and
+interface versions. A shared or related SoC is a useful search lead, not sufficient
+reason to transplant tuning or drivers. Pin both sides and compare by subsystem.
 
-1. Pick siblings: same SoC **or** the parent/child SoC in the same Qualcomm family, and a
-   tree from a credible maintainer on roughly the same Android base.
-2. Diff along subsystems, not wholesale (`upstream-diff.sh`, `vendor-tree-diff.py`):
-   SurfaceFlinger/display props, power hints (perfconfigstore/powerhint), zram config,
-   audio policy + volume tables, vibration HAL, camera, sensors, SEP.
-3. Feature parity is a *tree state* question: a fix that lands in a sibling tree may depend
-   on services, blobs, or power paths your tree deliberately does differently. Verify the
-   dependency exists before porting.
-4. Credit belongs to the author of the actual change — the cherry-picking skill's
-   `references/credit.md`.
+Trace each proposed difference through consumers and build/runtime selection. Check
+whether the target already implements the behavior differently. Preserve upstream
+authorship for an actual port; explain original adaptations separately.
 
-## 2. Case studies (each cost a real session to learn)
+## Subsystem questions
 
-### SurfaceFlinger & display
-- Pin SurfaceFlinger hot threads to the busy cluster (`4-7`) for smoother scroll on
-  quad-cluster SoCs; verify against `dumpsys` cpuset membership.
-- `predict_hwc_composition_strategy=1` can make blur/composite workloads skip dropped
-  frames — benchmark before and after.
-- Display prop packages (`vendor.prop`) should mirror the stock volume/HBM table when the
-  blob set matches; mismatches produce wrong brightness behaviour.
-- DPPS / dynamic FPS knobs are platform dependent; mirror the sibling tree's polarity.
+- **Display:** which driver, panel mode, compositor path and power policy are active?
+  Verify property readers and panel calibration. Never prescribe a CPU mask, HBM
+  table, scheduler setting or HWC property from another device without evidence and
+  comparable measurements.
+- **Vibrator:** verify ioctl numbers, payload layouts and lifecycle against the
+  exact driver. A command supported by one revision may fail on another. Check
+  overlapping on/perform/compose requests, cancellation and callback ownership.
+- **Audio/Bluetooth:** trace the selected HAL backend, policy imports, codec support,
+  offload configuration and property format. Verify indirect consumers before
+  removing apparently unused XML or libraries.
+- **Camera/sensors:** preserve per-unit calibration and persistent data. Identify
+  the actual reader/writer domains and nodes before changing labels or ownership.
+- **Kernel:** check matching build configs, modules, KMI, DTB/DTBO selection and
+  packaging; kernel repositories may be split in the manifest.
 
-### Vibrator HAL (richtap / rt6010-class drivers)
-- Sending a frequency-set ioctl on **every** `on()`/`perform()` triggers `KERN_ERR`
-  "unknown cmd" in dmesg when the driver does not implement runtime frequency standby —
-  always read the driver source before assuming a command is repeatable: seed `f0` once
-  during HAL init, never re-send unless the kernel documents support.
-- Cancel in-flight `compose()` worker threads when `on()`/`perform()` overrides them.
-- `dumpsys vibrator_manager` shows composition lengths; always sanity check after tuning.
+## Integration checks
 
-### Audio & Bluetooth
-- Vendor props (e.g. LHDC codec enable flags, a2dp offload cap strings) need exact
-  formatting; a typo'd prop is silent until a codec negotiate fails. Guard optional SW
-  codecs behind a proper init guard.
-- Drop dead audio policy XMLs: the audio HAL loads a fixed set; extra files only confuse
-  VTS and future greps. Confirm against the HAL binary + `audio_imports` if present.
-- Keep one ad2p_offload adapter for each codec family that the fence allows; check
-  `ro.bluetooth.a2dp_offload.supported` under the current vendor blob set.
+Follow each installed service through `PRODUCT_PACKAGES`, Soong namespaces and
+visibility, install partition, init configuration, executable label/domain, interface
+registration, VINTF declaration and client expectation. Account for conditional
+product/SKU configuration and generated files.
 
-### Camera & sensors
-- Calibration nodes (`/data/vendor/camera/...`, `/persist`) are often written as root, while
-  the camera HAL runs isolated. If the HAL reads a node, give it a proper SELinux label +
-  ownership rather than widening permissions globally.
-- In `ueventd`/`sepolicy` label files by **exact path** — prefix and glob labels can leak.
+For policy, distinguish type declarations from object mappings and permissions.
+Use a narrow exact, prefix or regex rule according to the relevant format and
+required instances. A heuristic AVC helper is not a policy compiler.
 
-### Kernel & build hygiene
-- Kernel branch: keep a dedicated branch per ROM/tree (bug fixes cherry-picked, not
-  doubled); module/devicetree repos may live in separate trees — the manifest is the map.
-- Never leave `PRODUCT_REQUIRES_INSECURE_EXECMEM_FOR_SWIFTSHADER` or permissive policy in a
-  production tree: `neverallow system_server execmem` should pass through the CTS/SEC
-  checks.
+For overlays, verify target package, resource names, overlayable policy, product
+selection and configuration precedence. For properties, find the reader and writer
+at this revision. For binaries, consider dynamic loading and service discovery in
+addition to direct linker dependencies.
 
-## 3. General audit checklist
+Only remove an entry after establishing it is unused in supported configurations.
+A failed text search or `--orphans` result alone is insufficient. Preserve unrelated
+changes. Report each proposed removal's consumer search and remaining uncertainty.
 
-- [ ] All HAL service `.rc` files have matching `sepolicy` domain labels.
-- [ ] `property_contexts` labels every new prop the HALs read/write.
-- [ ] `ueventd` rules consistent with `/sys` and `/dev` nodes actually present.
-- [ ] No duplicate VINTF HAL instances (QTI blobs + OSS service) — `preflight.py` catches.
-- [ ] `PRODUCT_PACKAGES` include every module referenced by the `.mk` graph.
-- [ ] sepolicy severity: run `avc2rules.py` and clear all `neverallow` risks.
+Use `preflight.py` for selected static errors, then review its limits and the raw
+diff. Validate compilation, boot, regressions and performance separately when the
+necessary environment and task authorization are available.
 
-## 4. Only keep what is used
 
-Before importing or keeping an entry, prove something consumes it:
-- Overlay (RRO) resources: the name must exist in the target package
-  (`aapt2 dump resources` / grep the package's `res/values`). An absent name is dead.
-- Files and modules: referenced by a `PRODUCT_PACKAGES`/`COPY_FILES`/`.rc`/policy line.
-- Props: read by some binary or framework class (`blob-intel.py`, `git grep`).
-Drop the rest and say so in the commit; do not preserve dead lines "just in case".
+---
+
+<!-- references/engineering-judgment.md -->
+
+# Evidence and engineering judgment
+
+The standard is a defensible engineering conclusion. Sounding certain is not a
+substitute for understanding the target.
+
+## Establish what is actually known
+
+Record the relevant product, source revision, firmware/kernel identity and exact
+symptom. Read the actual implementation and its callers, build selection and
+configuration. A declaration alone does not establish that the code is built,
+loaded, selected or executed. A stock implementation from another release may
+explain an interface without describing this release's behavior.
+
+Use these distinctions when they affect the conclusion:
+
+- **Observed:** a file at a pinned revision defines a symbol; a captured log shows
+  a failure; a test returned a particular result. Cite the source or artifact.
+- **Inferred:** the observations support a proposed explanation. Name the assumption
+  and a check that could disprove it. Do not promote correlation to causation.
+- **Unknown:** required evidence is absent, inaccessible or outside the available
+  tool's coverage. State the gap directly. "Not found in these directories" does
+  not mean "does not exist".
+
+Do not invent successful command output, citations, test coverage, driver behavior,
+AOSP APIs, properties, config symbols, or upstream fixes. Verify identifiers at the
+chosen revision before using them. If a referenced facility does not exist there,
+find the actual equivalent or explain why the proposal cannot work as written.
+
+## Diagnose before modifying
+
+Form a specific hypothesis with a predicted observation. Trace the relevant path
+across framework, Binder interface, HAL, driver and configuration only as far as
+needed. Check initialization, ownership, lifecycle, errors, cancellation and
+concurrency where they determine the symptom. Compare against a known-good device
+or build without importing its assumptions wholesale.
+
+Prefer the existing AOSP or target-tree contract. A new service, hook, property,
+framework API or abstraction needs a concrete requirement that the existing path
+cannot meet. Avoid speculative optimization, magic constants, broad permission
+grants, disabling checks, and unrelated cleanup disguised as a fix. A workaround
+must name the observed defect, its limits and how success will be measured.
+
+Search callers and indirect consumers before removal: dynamic loading, generated
+makefiles, init triggers, overlays and runtime configuration can evade a text search.
+Missing evidence warrants investigation, not automatic deletion.
+
+## Be honest about capability and validation
+
+Say plainly when you cannot inspect the device, run a build, decode an artifact,
+access a repository or establish a technical claim. Continue useful work within
+those limits, but do not simulate the missing capability with confident prose.
+Ask for the specific missing fact when it blocks a sound decision.
+
+Report validation precisely: patch application proves applicability; static scans
+find selected patterns; compilation checks the configured build; device execution
+checks the tested scenarios. None alone proves all of the others. A command that
+failed or was never run is not validation. A warning or unsupported input is not
+zero findings. Performance claims require comparable measurements.
+
+When new evidence disproves a claim, say what was wrong and why. Reassess changes
+that depended on it. Do not silently change the story, blame the user, hide failed
+attempts relevant to the outcome, or imply that uncertainty has been resolved.
+
+Be direct and technical when disagreeing, without ridicule. If evidence remains
+inconclusive, report the leading explanation and alternatives as such. End a fix
+report with the behavior changed, evidence checked, and material unresolved limits;
+use ordinary prose rather than a ritual confidence score or a generic disclaimer.
 
 
 ---
 
 <!-- references/first-boot-debugging.md -->
 
-# First-boot debugging: a feature broke after bring-up
+# First-boot and subsystem debugging
 
-The standard failure: a feature that worked in one tree is dead in another (fingerprint,
-camera, vibration, charging, Wi-Fi). Debug in this order:
+## Preserve evidence and identify the target
 
-## 1. Capture evidence
-```bash
-adb logcat -c; sleep 5; adb logcat -v brief | grep -iE 'TAG1|TAG2' &
-adb shell dmesg | grep -iE 'fingerprint|fps|goodix|buy'
-adb shell dumpsys <service>          # e.g. fingerprint, lights, vibrator_manager
+Select the device explicitly when more than one is connected. On a host use `adb`;
+in Termux use local commands only when that phone is the target. Root availability
+and readable log buffers vary. A permission error is missing evidence, not no errors.
+
+Capture logs before clearing buffers or restarting services:
+
+```sh
+adb -s SERIAL logcat -b all -d -v threadtime > logcat-before.txt
+adb -s SERIAL shell getprop > properties.txt
+adb -s SERIAL shell dumpsys SERVICE > service-state.txt
+adb -s SERIAL shell dmesg > kernel-log.txt
 ```
-- Grab the service's **pid** first: `su -c 'ps -A | grep <hal>'`, then read
-  `/proc/<pid>/openfiles` in the debugger. Everything else is assumption.
 
-## 2. SEP fires first (most cases) — the label-first chain
+Record firmware, build fingerprint, kernel release, slot and reproduction steps.
+Reproduce once with timestamps and collect the relevant subsequent logs. Inspect
+pstore/ramoops and tombstones when a crash or reboot is involved. Redact sensitive
+logs before publishing; keep raw captures local.
 
-Denials are usually about **properties, nodes or files that have no explicit label**. Fix in
-this exact order (partial fixes silently produce more denials):
+## Trace the failing path
 
-1. **Dedup in `property.te`**: if a prop appears twice (HAL context + vendor context label),
-   neither applies cleanly — remove the duplicate first. One setting for one prop.
-2. **Prefix labels in `property_contexts`**: HAL blobs usually read a *family* of props
-   (`persist.vendor.<x>.*`). Add a per-prefix label for the entire family; per-prop labels
-   along will not cover the whole family.
-3. **Allow the writer**: whichever domain writes the prop (often `vendor_init` during boot)
-   needs `set_prop(<writer>, <label>)`. Verify the write path really is in that domain: use
-   `avc2rules.py` to classify each denial.
-4. Re-check `logcat -b events` — a *new* denial usually means a previously invisible step
-   (e.g. a secondary HAL or `system_server`) now runs and fails on the next prop.
+Find the first relevant failure and follow the actual service chain. Check whether
+the selected service binary is installed, starts in the expected domain, registers
+its interface and survives the request. Inspect init configuration, properties,
+VINTF declarations, linker errors, dependencies and driver nodes as applicable.
+For open descriptors use `/proc/<pid>/fd` with sufficient permissions; there is no
+standard `/proc/<pid>/openfiles` interface.
 
-## 3. Non-policy causes
-- A **stale blob set**: if the feature still fails with zero denials, suspect the vendor
-  blobs — re-extract from the same vendor build your SEP/SPI expectations were derived from.
-- A missing **rc file** or no `PRODUCT_PACKAGES` entry for an additional sub-HAL.
-- A feature that depends on another feature's HAL boot (e.g. camera having a fill light runs
-  through the lights HAL) — the second HAL must exist.
+Do not assume SELinux causes most failures, or that no visible AVC means policy is
+correct. AIDL service listings and HIDL `lshal` have different coverage. VINTF state
+can combine device, vendor, ODM, system and module fragments; one XML is not the
+merged manifest.
 
-## 4. Case study: fingerprint authentication failure from policy alone
+## Investigate policy when the evidence points there
 
-Symptom: fingerprint service never authenticates; logcat shows a goodix/fingerprint HAL
-retrying constantly.
+Use the denial's source domain, target context, class, permission and actual object.
+Check its label and ownership before considering an allow rule. Reuse an appropriate
+existing type where possible. A generic label is a lead, not automatic permission
+to relabel everything under that path.
 
-- `hal_fingerprint_default` read vendor props under `default_prop` — five denials, one per
-  lookup, but only visible on the FIRST failing verify.
-- Fix chain (all three, in order): a per-HAL `set_prop` duplicate in `property.te` → a
-  `vendor_init` allow rule for the fingerprint prop label → a prefix label in
-  `property_contexts` so the whole `persist.vendor.<x>.*` family is labelled.
-- Verify: `dumpsys fingerprint` should report a finger after wipe; `logcat | grep -i
-  fingerprint` should show a clean first auth attempt.
-- If policy is clean and it still fails, the blob set is suspect: re-extracting the vendor
-  blobs from the matching vendor build fixed the residual mismatch.
+Distinguish a property type declaration in `.te` from a name-to-context mapping in
+`property_contexts`. Use exact matching for a single property; use a prefix only
+when the entire namespace shares the intended ownership and access. Confirm the
+writer and reader domains. `avc2rules.py` suggestions require review against the
+target macros and neverallow rules; they are not validated policy.
 
-## 5. Verify nothing regressed
+## Check other plausible causes
 
-`scripts/preflight.py` from the cherry-picking skill:
-duplicate services, duplicate SEP entries, undefined modules, list drift. Then a full
-manual review of the raw diff.
+- Linker or interface mismatch: verify the actual blob set, partition placement,
+  dependencies, AIDL/HIDL version and firmware pairing.
+- Missing service or plugin: trace module selection, namespace visibility, installed
+  path and dynamic loading; do not add a sibling device's HAL by name alone.
+- Driver or calibration failure: inspect the exact ioctl/node contract, kernel log,
+  permissions and required persistent data. Preserve per-unit calibration.
+- Framework/client failure: trace the request, feature flags, state and error handling.
 
-## 6. Case study: "Hey Google" dead, `dumpsys soundtrigger_middleware` shows a fake HAL
+For example, a sound-trigger fallback may justify checking
+`sound_trigger.primary.<platform>.so` and the selected audio backend. It does not
+establish that every platform uses the same legacy HIDL implementation.
 
-Symptom: hotword never triggers; `lshal`/logcat show the framework running a fake sound
-trigger HAL.
-- Cause: the HIDL passthrough `android.hardware.soundtrigger@2.x-impl` loads
-  `sound_trigger.primary.<platform>.so`. Nothing in the tree built or shipped it (the stock
-  dump has it), so the framework fell back.
-- Check: `ls /vendor/lib64/hw | grep sound_trigger` on stock vs ours; `lshal | grep sound`.
-- Fix: build it from source in the ROM tree rather than carry a prebuilt. Match the audio
-  stack: a HIDL/PAL audio HAL needs the HIDL st-hal (Lineage `st-hal-ar`, legacy branch), not
-  the AIDL one. Adapt `Android.bp`: `soong_namespace` importing the platform's
-  `hardware/qcom-caf/<platform>` namespace, module name `sound_trigger.primary.<platform>`,
-  add the namespace to `PRODUCT_SOONG_NAMESPACES`, keep the `-impl` package in
-  `PRODUCT_PACKAGES`, add the repo to the manifest. Verify without building: Soong
-  accepts the module (no missing-dep errors) and the library exports what the audio HAL
-  expects (`blob-intel.py`).
+A setup-wizard stall warrants checking its logs and dependencies first. Compare
+reported patch levels and AVB metadata with the images actually flashed when
+KeyMint or rollback errors point there. Do not copy stock dates into an unrelated
+build or declare the mismatch causal without supporting evidence.
 
-## 7. Case study: setup wizard stalls or fails after a flash
+## Verify the result
 
-Check the security patch levels before blaming GMS. Boot, init_boot and vendor patch levels
-must match the firmware actually flashed. Read them from the stock images' AVB properties
-(`avbtool info_image --image boot.img`, `com.android.build.boot.security_patch`, etc.) and
-set `BOOT_SECURITY_PATCH`, `INIT_BOOT_SECURITY_PATCH`, `VENDOR_SECURITY_PATCH`
-accordingly. Treat it as a lead, not proof: also check key attestation (RKP) errors and
-Play Store/GMS waits in logcat from the wizard.
+Repeat the same reproduction and check the predicted evidence. Include a nearby
+regression scenario such as service restart, suspend/resume or cancellation when
+relevant. State whether the fix was only reviewed, compiled, flashed or exercised;
+never substitute a static preflight result for those stages.
 
 
 ---
 
 <!-- references/git-conventions.md -->
 
-# Git conventions & policies
+# Git identity, credit and publishing
 
-## 1. Identity
-- Commits use the user's own git identity (`git config user.name` / `user.email`). Verify
-  before the first commit of every session.
-- Never commit with a work email, distro/termux defaults, or any identity that is not the
-  user's. If the config is wrong, fix the repo-local config, not history.
-- Authorship of upstream code is a credit matter, not an identity matter:
-  see `reverse-engineering-cherry-picking`, `references/credit.md` (upstream author keeps
-  authorship on picks and ports).
+## Identity and messages
 
-## 2. Commit message style
-- **Technical:** what changed and why, with the mechanism. No filler ("clean up", "fix some").
-- **No inspiration mentions:** never name another OS or vendor design (Apple/iOS included) in
-  the message; describe the actual mechanism instead. Bad: "Add iOS-style slider animation".
-  Good: "SystemUI: Implement scalable continuous slider with dynamic corner radius".
-- **No AI attribution trailers.** Human co-authors only.
-- AOSP style prefixes when appropriate (`device:`, `sepolicy:`, `overlay:`, subsystem `:`).
-- Shape: `device: Subject` (imperative, short), blank line, optional `* ` bullets for the
-  mechanism, `Signed-off-by` last. No essays, no "this commit", no marketing words.
-- One topic per commit. A bulk "import from X" commit is a defect: split it per upstream
-  commit/author and per subsystem (`reverse-engineering-cherry-picking`,
-  `references/history-surgery.md` section 5). Never keep Gerrit `Change-Id:` lines.
-- Other ROMs by name are fine only as a credited source URL, not as the reason for a change.
+Read `git -C TARGET config user.name` and `user.email` before committing. Use the
+user's intended configured identity; do not invent one or change global config.
+A work email is not inherently wrong if it is the user's chosen identity.
 
-## 3. Remote operations & PR safety
-- Never open PRs, issues, discussions or comments against third-party or upstream repos
-  (ROM orgs, CLO, AOSP, individual maintainers). Only act on repositories the user controls.
-- Verify the remote URL before every push; prefer `--force-with-lease` over bare force.
-- Pushing to a fork is invisible to a ROM build unless the manifest points at that fork and
-  branch — check the manifest.
+Preserve authorship and source URLs for upstream work. Use technical commit messages
+that explain behavior and mechanism, with the repository's usual subsystem prefix.
+Retain human credit; do not add AI attribution trailers. Avoid marketing or claims
+of inspiration. Name an upstream project when it supplies relevant provenance.
 
-## 4. History rewriting
-- Never rewrite a pushed branch without an explicit fresh instruction from the user.
-- Before any surgery: create a local backup branch (`backup/<what>`), record
-  `git rev-parse HEAD^{tree}`, work on a branch, never on the shared remote directly.
-- Force-push language: `git push --force-with-lease` for single-user, or plain `--force`
-  when the user explicitly approves a history replacement.
+Keep changes coherent and reviewable. Do not split, squash or rewrite existing
+history merely because a different presentation is preferred. Preserve Gerrit
+Change-Id when continuing the same review; adapt trailers to the actual destination.
+Use sign-offs according to the target's contribution policy and the user's authority
+rather than treating generated text as a substitute for that attestation.
 
-## 5. Org presentation
-- AI-assisted work is disclosed in the **org profile README** (`<org>/.github/profile/README.md`),
-  not in the device tree: one short note, no model names. Commits never carry AI trailers.
+## Remote operations
+
+Stay within the requested repositories and actions. A local fix does not by itself
+request publication or modification of upstream projects. Existing authorization
+persists; do not ask again for an action already clearly authorized. Verify the
+exact remote URL and branch before writing. Check the effective manifest when the
+published change is supposed to alter a ROM build.
+
+## Requested history rewriting
+
+Record local and remote tips and `HEAD^{tree}`, create a backup, and work on an
+isolated branch. A history-only rewrite must preserve the final tree and authorship;
+functional changes need separate review. Do not discard entries as unused during
+an authorship-only cleanup.
+
+For an explicitly authorized published-history rewrite, use
+`git push --force-with-lease=refs/heads/BRANCH:REVIEWED_SHA`. A lease failure means
+the remote moved: inspect it before proceeding. Never retry with unconditional
+force. Detailed mechanics live in the cherry-picking skill's history-surgery guide.
+
+Do not edit organization profiles, disclosures or unrelated documentation as a side
+effect of a coding or credit task.
 
 
 ---
 
 <!-- references/kernel-level-work.md -->
 
-# Kernel-level work (bring-up, modules, devicetrees)
+# Kernel, modules and device trees
 
-## 1. Repo & branch layout
-- Kernel, modules, and devicetrees typically live in separate repos; the manifest is the
-  map. Keep a dedicated kernel branch per ROM/tree and cherry-pick bug fixes rather than
-  re-merging everything.
-- Root-management branches (KernelSU-Next + SUSFS style integrations) are maintained on
-  their own branch (`*-ksun-susfs` naming) — keep the clean upstream branch buildable too.
-- Match kernel tags against the shipped CLO release: `KERNEL.PLATFORM.<ver>.<r>-*` families
-  (see `read-android-source`, `references/android-tree-map.md`).
+## Identify the actual kernel build
 
-## 2. Module loading (GKI / system_dlkm)
-- `/system_dlkm` and `/vendor_dlkm` modules must match the GKI build suffix; missing-suffix
-  module loading fails silently at boot — check `dmesg | grep -i module` early.
-- `vendor_boot`/`modules.load` lists drift: duplicate entries in the modprobe list waste
-  init time and can shadow an updated module; dedup before every release.
-- When the kernel moves major versions (5.x → 6.6), expect module ABI churn: rebuild
-  modules against the target's GKI headers, not the source tree's defaults.
+Read the manifest, kernel build configuration and module/device-tree repositories.
+Record the kernel release, Android GKI generation, vendor tag and toolchain where
+relevant. A shared SoC name or a similar release string does not establish ABI
+compatibility. Keep root-management integrations separate only when the repository's
+branch model calls for it; do not introduce them as part of unrelated bring-up.
 
-## 3. zram & memory plumbing
-- The lz4 choice lives in more than one place historically (init rc `write ... comp_algorithm`,
-  post-boot script). Decide once, grep everywhere: `rg -l 'comp_algorithm|zram0/disksize' init/`.
-- `low_ram` conditionals are a Go_device legacy: if the device never ships low-RAM SKUs,
-  remove the conditional entirely rather than leaving busy code both gates alive.
-- A deterministic zram size (fixed fraction of the RAM, e.g. 75%) is more predictable than
-  meminfo-derived formulas that can rotate per build; document the policy in the fstab or a
-  dedicated rootdir script.
-- Post-boot redundant swapon races the boot: remove the second activation if fstab already
-  handles it (`init.qcom.post_boot.sh` vs `fstab.zram`).
+## Module loading
 
-## 4. Devicetrees & ueventd
-- DPU/DSC/pinctrl nodes touched by init need consistent `ueventd` + `sepolicy` labelling and
-  explicit ownership (`chown` in `init.<target>.rc`, matching group access in SELinux).
-- Add nodes for stsafe/UWB/eMMC rpmb via precise ueventd lines (exact path, no globs).
-- After a devicetree change, verify on-device with `cat /proc/device-tree/...` — the label
-  says nothing about whether the node actually landed.
+Trace each required module through build selection, packaging, dependencies and the
+boot phase that loads it. Inspect `modules.load*`, `modules.dep`, vendor ramdisk,
+`system_dlkm` and `vendor_dlkm` placement against this device's configuration.
+Preserve required ordering and early-boot dependencies.
 
-## 5. Root & debugging conveniences (keep them honest)
-- No build attestation compromises for debug conveniences:
-  `PRODUCT_REQUIRES_INSECURE_EXECMEM_FOR_SWIFTSHADER` and permissive policy break
-  `neverallow system_server execmem` and Play Integrity alike — keep both clean in
-  production trees.
-- SUSFS-style mounts hide root from detection without touching attestation paths; prefer
-  it over execmem or permissive hacks.
+For load failures, use kernel logs, `modinfo` where available, symbol/version data,
+module signing configuration and the target kernel's exported KMI. Vermagic/release
+matching is one check, not an ABI guarantee. Distinguish missing files, unknown
+symbols, version CRC mismatches and signature rejection. A major kernel migration
+requires coordinated drivers, configs, device trees, modules and packaging; copying
+headers or adding a release suffix is not a sufficient port.
 
-## 6. Security audit checklist (kernel level)
-- [ ] `dmesg` clean of repeated vendor-HAL errors (check the vital-specific lines — e.g.
-      a vibrator HAL spamming unknown ioctls, or unlabeled node access).
-- [ ] No duplicate SEP labels in `property.te` / `file_contexts`.
-- [ ] `/proc/charger/...` & battery nodes labelled per domain (vendor_proc_power_supply).
-- [ ] Frida-like hooks (adb keys, tcp listener shims) documented or off in release code.
+## Memory and performance changes
+
+Trace the effective settings through fstab, init, vendor scripts, properties and
+kernel configuration. Establish which path initializes zram and whether it is
+already active before changing compression, size or activation. Retain low-RAM and
+SKU conditions until the supported product matrix shows they are unused.
+
+Do not prescribe a universal zram fraction, CPU mask, scheduler value or compression
+algorithm. Use workload, pressure, swap, latency and thermal measurements on the
+target. Remove competing writers only after proving their execution order and role.
+
+## Device trees and node access
+
+Read the driver's bindings and the shipped DTB/DTBO selection. Verify compatibles,
+resources, interrupts, clocks, regulators and overlays at the target revision.
+Source labels do not prove which nodes landed in the running device tree.
+
+Use `/proc/device-tree` or `/sys/firmware/devicetree/base` when available; properties
+can be binary or NUL-terminated. Read through a suitable decoder, not assumptions
+based on `cat` output. Trace a sysfs node to the owning driver before changing it.
+
+Match DAC ownership/mode and SELinux labels to the actual node and service domain.
+Use the narrowest rule that covers the required dynamic instances; ueventd patterns,
+file_contexts regexes and genfs_contexts paths have different matching semantics.
+
+## Validation
+
+Use available config, symbol, ABI and device-tree checks for the affected build.
+When compilation or hardware tests are unavailable or prohibited, report that gap.
+Boot validation includes module errors, deferred probes, driver failures, suspend
+and the changed feature. Never claim root hiding, altered properties or permissive
+policy guarantees compatibility or hardware-backed attestation.
 
 
 ---
 
 <!-- references/props-integrity.md -->
 
-# Play-services process spoofing & build integrity hygiene
+# Build properties, process hooks and attestation
 
-## 1. The conflict (and the resolution guard)
-Play-service-related framework hooks rewrite `Build` fields (fingerprint, model, device,
-brand) for Play processes to pass Basic/Device Play Integrity. A compatibility layer that
-runs Play processes with a different runtime shape cannot coexist with spoofing in the same
-process:
+Trace the target tree's actual property reader or framework hook before editing it.
+Record the relevant process, call order, product configuration and firmware build.
+Do not invent a compatibility gate API or transplant one from a different branch.
+If two hooks modify the same state, establish their ownership and execution order
+before adding a guard; unrelated processes may need different treatment.
 
-```java
-public static void setProps(String packageName) {
-    if (isPlayCompat()) {   // the tree's own gate API
-        return;
-    }
-    // spoofing logic
-}
-```
+## Verify the correct state
 
-The guards must be mutually exclusive **per process**, not per build flag. If the tree runs
-Play processes through its own integration plumbing, that hook yields instead of double-applying.
+`getprop` reads Android system properties. A process-local modification to Java
+`android.os.Build` fields is different state and may require an authorized in-process
+inspection or a controlled test to observe it. `/proc/<pid>/environ` contains the
+process environment; it does not expose Android properties or Java Build fields.
+A global property dump cannot prove a process-local hook ran.
 
+## Keep claims about integrity precise
 
+Build tags, fingerprints, verified boot, signing keys, patch levels, KeyMint/RKP and
+Play Integrity verdicts are distinct mechanisms. Setting `release-keys`, copying a
+fingerprint or hiding root does not create trusted signing or guarantee a verdict.
+Preserve accurate firmware and security-patch provenance. Do not change reported
+patch levels just to suppress an error without establishing the underlying mismatch.
 
-## 2. Branches
-Any GMS-related experiment is a **branch of the whole repo set** (device, frameworks, vendor,
-manifest) — never a partial mix into a shared branch. Merge direction is one-way: GMS-side
-code flows from the integration branch to a standalone feature branch, never back into the
-baseline silently.
-
-## 3. Play Integrity, attestation & SELinux hygiene
-- No permissive domains, no unlabelled node access in production policy.
-- Release-keys hygiene: `ro.build.tags=release-keys`; clean build dates/fingerprints
-  matching certified stock targets.
-- No su/daemons/root artifacts visible to apps; Keystore/KeyMint and boot attestation paths
-  untampered.
-- Verify props changes with `getprop` in the actual process (`ps -A` + `su -c 'cat
-  /proc/<pid>/environ'`) rather than globally.
+Use observed logs and, when available, the actual attestation or compatibility test
+result to identify the failed layer. State what cannot be tested. Do not weaken
+SELinux, disable validation, or alter attestation paths as a speculative workaround.
+Scope experiments and cross-repository changes to the user's request and existing
+branch model; do not invent a universal integration or merge policy.
 
 
 ---
 
 <!-- references/repo-manifests.md -->
 
-# Repositories, manifests & fast patching workflow
+# Manifests and cross-repository changes
 
-## 1. Manifest & branch architecture (template)
+The effective `repo` manifest includes the selected manifest revision, includes,
+local manifests, project overrides, groups and per-project revisions. Inspect
+`.repo/manifest.xml` and local manifests; use `repo manifest -r` when available to
+record checked-out revisions. The manifest selects projects, while product/build
+configuration determines what is compiled and installed.
 
-A ROM build is governed by one manifest repo:
-- **ROM manifest:** `<rom-org>/manifest@<branch>` — the daily-driver base.
-- **Local manifests & patchsets:** your own `<you>/android-manifest@<branch>` with
-  `patches/` and repo overrides for every customized component (device, hardware, vendor,
-  kernel, frameworks, LaunCher).
-- **Sandbox / experiment branches:** kept as branches across the *entire* repo set (device,
-  frameworks, vendor, manifest), never mixed into the daily branch.
+Keep each component in its existing repository and branch model. Localize the
+projects that differ from upstream; avoid inventing a separate branch across every
+repository for a change affecting only one component. Isolate work from a running
+build or unrelated local modifications.
 
-Keep each component in its own fork; localize only the repos that deviate from upstream, so
-the manifest diff is the inventory of your customizations.
+Prefer existing source and bounded commit/file fetches. The cherry-picking skill's
+`fetch-patch.py` supports authenticated GitHub requests and trial application in a
+worktree. A raw `git apply --check` checks applicability to the selected working
+tree; it does not preserve commit authorship or evaluate build dependencies.
 
-## 2. Fast patching (no big fetches)
+For each change, establish module definitions, namespaces, interface versions,
+partition placement, generated outputs and manifest ownership. Static preflight
+scans are supplemental; they do not evaluate the full Make/Soong graph.
 
-Fetching whole repo histories (frameworks/base is many GB) consumes device storage and
-mobile bandwidth. Patch-level paths:
-
-```bash
-gh api repos/<owner>/<repo>/commits?per_page=10                     # list
-curl -s -H "Accept: application/vnd.github.patch" \
-  https://api.github.com/repos/<owner>/<repo>/commits/<sha>  > /tmp/p.patch
-git apply --check /tmp/p.patch && git apply --3way /tmp/p.patch      # index-only pre-checks
-```
-`fetch-patch.py` (cherry-picking skill) handles this for GitHub, GitLab/CodeLinaro,
-googlesource, Gerrit and kernel.org, with path mapping and trial-apply into a worktree.
-
-## 3. Verification without builds
-
-- Inspect imports, method signatures and symbol presence against the target branch **before**
-  applying: unresolved symbols or missing proprietary dependencies are the most common
-  silent breakage.
-- Run `scripts/preflight.py` (cherry-picking skill): duplicate VINTF HALs, SEP duplicates,
-  init services without domains, undefined PRODUCT modules, list drift.
-- Recheck every `sepolicy` addition: one rule per denial, minimal grants.
-
-## 4. Push ordering
-Dependencies push first (hardware → vendor → device), fast-forward only; the device tree
-pulls the last so the parent repos exist in the manifest before it references them.
+When publishing is authorized, order repositories by their actual dependency graph.
+Publish a dependency before a manifest or consumer points to its new revision.
+Hardware → vendor → device is an example, not a universal order. Verify remote
+SHAs and the resulting manifest selection; a push alone does not change a build
+whose manifest still selects another repository or revision.
 
 
 ---
 
 <!-- references/ui-ux-systemui.md -->
 
-# UI/UX, SystemUI & Launcher architecture
+# SystemUI and Launcher integration
 
-## 1. Quick Settings & media
-- Sliders (brightness/volume) must resize in both orientations with smooth corner-radius
-  scaling and live feedback; keep the render path in the standard framework primitives so
-  90/120Hz stays smooth and skip custom animation dependencies where the base already
-  provides them.
-- Media player: consistent padding across QS and shade; popup/compact states must scale with
-  the tile grid.
+Identify the actual branch implementation first: Views, Compose, Shell, SurfaceControl,
+Launcher3 and vendor extensions vary by release. Trace the component's state owner,
+lifecycle, settings source and resource overlays before adding another path.
 
-## 2. SystemUI modules (live activities pill, etc.)
-- Compact pill → expanded overlay → dual-activity split: each state independently testable,
-  settings toggle applies without restart.
-- **Cutout & curvature safety:** verify alignment against the actual panel cutout and status
-  bar margins on every device you ship this on; prevent left/right clipping on corner radii
-  (measure, don't assume).
+Preserve the user's requested design. Do not impose a pill, feed style, corner radius,
+refresh rate or another platform's appearance because a previous task used it.
 
-## 3. Launcher (AOSP/Launcher3 forks)
-- Glanceable-hub-style surfaces: widget picker dimensions must match the hub layout exactly
-  or resize glitches appear; resize handles share styling with the system picker.
-- Dark-shaded opaque styling for feeds/search surfaces.
-- 120Hz discipline: eliminate frame deadline misses in launcher touch/swipe handlers first —
-  isolate jitter using static wallpapers before blaming launcher code (live-wallpaper FPS
-  throttlers throttle independently).
-- Commits: describe the mechanism, not the inspiration. Bad: "Add iOS-style pill animation";
-  good: "SystemUI: Stage pill animation on surface control resize".
+For layout changes, check relevant orientations, density/font scales, cutouts, insets,
+RTL, accessibility, navigation modes and collapsed/expanded states. For gesture or
+animation changes, check interruption, cancellation and state synchronization using
+the primitives already supported by the branch.
+
+Measure frame timing on the target before claiming a performance improvement. Separate
+app, compositor, wallpaper, thermal and input-path causes. A high refresh-rate setting
+or smooth-looking emulator recording is not proof of meeting device frame deadlines.
+If runtime inspection is unavailable, explain the static reasoning and remaining tests.
 
 
 ---
